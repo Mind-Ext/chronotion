@@ -1,0 +1,14 @@
+{
+  // Run without Notion sync, using only local queue.json
+  "local_mode": true,
+  // Run once and exit (useful with external schedulers like cron)
+  "oneoff_mode": false,
+  // Minutes between each poll/execute cycle (minimum 1)
+  "poll_minutes": 15,
+  // Base directory for executable scripts (relative to project root)
+  "scripts_dir": "scripts",
+  // Auto-delete log files older than N days (0 = keep forever)
+  "log_max_age_days": 30,
+  // Max number of log files to keep (0 = unlimited)
+  "log_max_entries": 0
+}
