@@ -102,7 +102,7 @@ function makeJob(overrides: Partial<JobInstance> = {}): JobInstance {
 Deno.test("buildCommand: deno with no args", () => {
   const job = makeJob();
   const cmd = buildCommand(job, "/scripts/test.ts", "deno");
-  assertEquals(cmd, ["deno", "run", "/scripts/test.ts"]);
+  assertEquals(cmd, ["deno", "run", "--", "/scripts/test.ts"]);
 });
 
 Deno.test("buildCommand: deno with args and permissions", () => {
@@ -115,8 +115,8 @@ Deno.test("buildCommand: deno with args and permissions", () => {
     "deno",
     "run",
     "--allow-read",
-    "/scripts/test.ts",
     "--",
+    "/scripts/test.ts",
     "arg1",
     "arg2",
   ]);

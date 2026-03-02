@@ -67,11 +67,10 @@ export function buildCommand(
   switch (runtime) {
     case "deno": {
       const denoArgs = sanitizeDenoArgs(job.deno_args);
-      // deno run [permissions] script -- [user args]
-      const cmd = ["deno", "run", ...denoArgs, scriptPath];
-      if (job.args.length > 0) {
-        cmd.push("--", ...job.args);
-      }
+      // deno run [permissions] -- script [user args]
+      // The -- goes before the script to prevent flag injection,
+      // and Deno won't pass it through to Deno.args this way.
+      const cmd = ["deno", "run", ...denoArgs, "--", scriptPath, ...job.args];
       return cmd;
     }
     case "uv": {
