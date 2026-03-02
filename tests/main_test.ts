@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
-import { findDueJobs, recoverZombieJobs } from "./main.ts";
-import type { JobInstance, QueueData } from "./types.ts";
+import { findDueJobs, recoverZombieJobs } from "../src/main.ts";
+import type { JobInstance, QueueData } from "../src/types.ts";
 
 function makeJob(overrides: Partial<JobInstance> = {}): JobInstance {
   return {

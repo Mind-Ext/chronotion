@@ -4,8 +4,8 @@ import {
   detectRuntime,
   sanitizeDenoArgs,
   validateScriptPath,
-} from "./executor.ts";
-import type { JobInstance } from "./types.ts";
+} from "../src/executor.ts";
+import type { JobInstance } from "../src/types.ts";
 
 // --- Runtime detection ---
 

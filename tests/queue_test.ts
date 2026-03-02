@@ -5,8 +5,8 @@ import {
   findJob,
   generateUid,
   updateJob,
-} from "./queue.ts";
-import type { QueueData } from "./types.ts";
+} from "../src/queue.ts";
+import type { QueueData } from "../src/types.ts";
 
 Deno.test("generateUid produces consistent 12-char hex", () => {
   const uid = generateUid("test.ts", ["arg1"], "2024-01-01T00:00:00Z");

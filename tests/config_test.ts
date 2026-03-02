@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { loadConfig } from "./config.ts";
+import { loadConfig } from "../src/config.ts";
 
 Deno.test("loadConfig returns valid config", async () => {
   const config = await loadConfig();

@@ -3,7 +3,7 @@ import {
   computeNextRun,
   dateMatchesMacro,
   validateNextIn,
-} from "./schedule.ts";
+} from "../src/schedule.ts";
 
 // --- Interval tests ---
 
