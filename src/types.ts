@@ -56,6 +56,8 @@ export interface AppConfig {
   emojis: Record<JobStatus, string>;
   /** Status display text in Notion */
   status_text: Record<JobStatus, string>;
+  /** Mapping of file extensions (without dot) to the command array used to run them. Example: { "py": ["uv", "run"] } */
+  runtimes: Record<string, string[]>;
 }
 
 /** Queue file structure */

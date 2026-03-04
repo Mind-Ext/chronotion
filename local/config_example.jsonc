@@ -35,5 +35,13 @@
     "error": "error",
     "disabled": "disabled",
     "skipped": "skipped"
+  },
+
+  // Mapping of file extensions (without dot) to the command array used to run them
+  "runtimes": {
+    "ts": ["deno", "run"],
+    "js": ["deno", "run"],
+    "py": ["uv", "run"],
+    "sh": ["bash"]
   }
 }

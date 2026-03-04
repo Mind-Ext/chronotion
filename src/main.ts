@@ -94,7 +94,7 @@ async function executeJob(
     await logOrchestrator(`[${job.uid}] ${job.script}: started`);
 
     // Execute
-    const result = await executeScript(job, config.scripts_dir);
+    const result = await executeScript(job, config);
 
     // Update status
     const newStatus = result.success ? "success" : "failed";

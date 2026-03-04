@@ -9,26 +9,17 @@
  */
 
 import * as path from "@std/path";
-import type { JobInstance } from "./types.ts";
-
-export type Runtime = "deno" | "uv" | "bash";
+import type { AppConfig, JobInstance } from "./types.ts";
 
 const ALLOWED_DENO_ARG_PREFIXES = ["--allow-", "--deny-", "--unstable"];
 
-/** Detect runtime from file extension */
-export function detectRuntime(script: string): Runtime | null {
-  const ext = path.extname(script).toLowerCase();
-  switch (ext) {
-    case ".ts":
-    case ".js":
-      return "deno";
-    case ".py":
-      return "uv";
-    case ".sh":
-      return "bash";
-    default:
-      return null;
-  }
+/** Detect runtime command from file extension */
+export function detectRuntimeCommand(
+  script: string,
+  runtimes: Record<string, string[]>,
+): string[] | null {
+  const ext = path.extname(script).toLowerCase().replace(/^\./, "");
+  return runtimes[ext] || null;
 }
 
 /** Validate that a script path resolves within the scripts directory (path jail) */
@@ -65,34 +56,21 @@ export function sanitizeDenoArgs(args: string[]): string[] {
 export function buildCommand(
   job: JobInstance,
   scriptPath: string,
-  runtime: Runtime,
+  baseCmd: string[],
 ): string[] {
-  switch (runtime) {
-    case "deno": {
-      const denoArgs = sanitizeDenoArgs(job.deno_args);
-      // deno run [permissions] -- script [user args]
-      // The -- goes before the script to prevent flag injection,
-      // and Deno won't pass it through to Deno.args this way.
-      const cmd = ["deno", "run", ...denoArgs, "--", scriptPath, ...job.args];
-      return cmd;
-    }
-    case "uv": {
-      // uv run script -- [user args]
-      const cmd = ["uv", "run", scriptPath];
-      if (job.args.length > 0) {
-        cmd.push("--", ...job.args);
-      }
-      return cmd;
-    }
-    case "bash": {
-      // bash script -- [user args]
-      const cmd = ["bash", scriptPath];
-      if (job.args.length > 0) {
-        cmd.push("--", ...job.args);
-      }
-      return cmd;
-    }
+  // Special case for deno run: inject deno_args
+  if (baseCmd.length >= 2 && baseCmd[0] === "deno" && baseCmd[1] === "run") {
+    const denoArgs = sanitizeDenoArgs(job.deno_args);
+    // Combine base command (which might include global flags), instance args, then script and user args
+    return [...baseCmd, ...denoArgs, "--", scriptPath, ...job.args];
   }
+
+  // Generic case for all other runtimes
+  const cmd = [...baseCmd, scriptPath];
+  if (job.args.length > 0) {
+    cmd.push("--", ...job.args);
+  }
+  return cmd;
 }
 
 export interface ExecutionResult {
@@ -104,10 +82,10 @@ export interface ExecutionResult {
 /** Execute a job's script as a subprocess */
 export async function executeScript(
   job: JobInstance,
-  scriptsDir: string,
+  config: AppConfig,
 ): Promise<ExecutionResult> {
   // Validate path jail
-  const pathResult = validateScriptPath(job.script, scriptsDir);
+  const pathResult = validateScriptPath(job.script, config.scripts_dir);
   if (!pathResult.ok) {
     return { success: false, output: pathResult.error, exitCode: -1 };
   }
@@ -124,17 +102,18 @@ export async function executeScript(
   }
 
   // Detect runtime
-  const runtime = detectRuntime(job.script);
-  if (!runtime) {
+  const baseCmd = detectRuntimeCommand(job.script, config.runtimes);
+  if (!baseCmd) {
     return {
       success: false,
-      output: `Unsupported script type: ${job.script}`,
+      output:
+        `Unsupported script type: ${job.script}. Check runtimes in config.`,
       exitCode: -1,
     };
   }
 
   // Build command
-  const cmdArray = buildCommand(job, pathResult.resolved, runtime);
+  const cmdArray = buildCommand(job, pathResult.resolved, baseCmd);
 
   // Set up abort controller for timeout
   const ac = job.timeout_minutes ? new AbortController() : null;

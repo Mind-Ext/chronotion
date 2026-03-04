@@ -37,6 +37,12 @@ export const DEFAULT_CONFIG: AppConfig = {
     disabled: "disabled",
     skipped: "skipped",
   },
+  runtimes: {
+    "ts": ["deno", "run"],
+    "js": ["deno", "run"],
+    "py": ["uv", "run"],
+    "sh": ["bash"],
+  },
 };
 
 /**
@@ -64,6 +70,20 @@ export async function loadConfig(
   }
 
   const merged = { ...DEFAULT_CONFIG, ...overrides };
+
+  // Merge nested objects like runtimes and emojis explicitly to avoid overwriting defaults
+  if (overrides.runtimes) {
+    merged.runtimes = { ...DEFAULT_CONFIG.runtimes, ...overrides.runtimes };
+  }
+  if (overrides.emojis) {
+    merged.emojis = { ...DEFAULT_CONFIG.emojis, ...overrides.emojis };
+  }
+  if (overrides.status_text) {
+    merged.status_text = {
+      ...DEFAULT_CONFIG.status_text,
+      ...overrides.status_text,
+    };
+  }
 
   // Ensure poll_minutes is at least 1
   merged.poll_minutes = Math.max(1, merged.poll_minutes);

@@ -1,32 +1,44 @@
 import { assertEquals } from "@std/assert";
 import {
   buildCommand,
-  detectRuntime,
+  detectRuntimeCommand,
   sanitizeDenoArgs,
   validateScriptPath,
 } from "../src/executor.ts";
 import type { JobInstance } from "../src/types.ts";
+import { DEFAULT_CONFIG } from "../src/config.ts";
 
 // --- Runtime detection ---
 
-Deno.test("detectRuntime: typescript", () => {
-  assertEquals(detectRuntime("sync.ts"), "deno");
+Deno.test("detectRuntimeCommand: typescript", () => {
+  assertEquals(detectRuntimeCommand("sync.ts", DEFAULT_CONFIG.runtimes), [
+    "deno",
+    "run",
+  ]);
 });
 
-Deno.test("detectRuntime: javascript", () => {
-  assertEquals(detectRuntime("sync.js"), "deno");
+Deno.test("detectRuntimeCommand: javascript", () => {
+  assertEquals(detectRuntimeCommand("sync.js", DEFAULT_CONFIG.runtimes), [
+    "deno",
+    "run",
+  ]);
 });
 
-Deno.test("detectRuntime: python", () => {
-  assertEquals(detectRuntime("clean.py"), "uv");
+Deno.test("detectRuntimeCommand: python", () => {
+  assertEquals(detectRuntimeCommand("clean.py", DEFAULT_CONFIG.runtimes), [
+    "uv",
+    "run",
+  ]);
 });
 
-Deno.test("detectRuntime: bash", () => {
-  assertEquals(detectRuntime("backup.sh"), "bash");
+Deno.test("detectRuntimeCommand: bash", () => {
+  assertEquals(detectRuntimeCommand("backup.sh", DEFAULT_CONFIG.runtimes), [
+    "bash",
+  ]);
 });
 
-Deno.test("detectRuntime: unknown", () => {
-  assertEquals(detectRuntime("file.xyz"), null);
+Deno.test("detectRuntimeCommand: unknown", () => {
+  assertEquals(detectRuntimeCommand("file.xyz", DEFAULT_CONFIG.runtimes), null);
 });
 
 // --- Path jail ---
@@ -101,7 +113,7 @@ function makeJob(overrides: Partial<JobInstance> = {}): JobInstance {
 
 Deno.test("buildCommand: deno with no args", () => {
   const job = makeJob();
-  const cmd = buildCommand(job, "/scripts/test.ts", "deno");
+  const cmd = buildCommand(job, "/scripts/test.ts", ["deno", "run"]);
   assertEquals(cmd, ["deno", "run", "--", "/scripts/test.ts"]);
 });
 
@@ -110,7 +122,7 @@ Deno.test("buildCommand: deno with args and permissions", () => {
     args: ["arg1", "arg2"],
     deno_args: ["--allow-read", "--eval=bad"],
   });
-  const cmd = buildCommand(job, "/scripts/test.ts", "deno");
+  const cmd = buildCommand(job, "/scripts/test.ts", ["deno", "run"]);
   assertEquals(cmd, [
     "deno",
     "run",
@@ -122,14 +134,37 @@ Deno.test("buildCommand: deno with args and permissions", () => {
   ]);
 });
 
+Deno.test("buildCommand: deno with global base permissions", () => {
+  const job = makeJob({
+    args: ["arg1"],
+    deno_args: ["--allow-read"],
+  });
+  const cmd = buildCommand(job, "/scripts/test.ts", [
+    "deno",
+    "run",
+    "--allow-net",
+    "--unstable",
+  ]);
+  assertEquals(cmd, [
+    "deno",
+    "run",
+    "--allow-net",
+    "--unstable",
+    "--allow-read",
+    "--",
+    "/scripts/test.ts",
+    "arg1",
+  ]);
+});
+
 Deno.test("buildCommand: uv with args", () => {
   const job = makeJob({ script: "clean.py", args: ["--verbose"] });
-  const cmd = buildCommand(job, "/scripts/clean.py", "uv");
+  const cmd = buildCommand(job, "/scripts/clean.py", ["uv", "run"]);
   assertEquals(cmd, ["uv", "run", "/scripts/clean.py", "--", "--verbose"]);
 });
 
 Deno.test("buildCommand: bash with args", () => {
   const job = makeJob({ script: "backup.sh", args: ["/data"] });
-  const cmd = buildCommand(job, "/scripts/backup.sh", "bash");
+  const cmd = buildCommand(job, "/scripts/backup.sh", ["bash"]);
   assertEquals(cmd, ["bash", "/scripts/backup.sh", "--", "/data"]);
 });
