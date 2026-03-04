@@ -41,7 +41,10 @@ export function validateScriptPath(
 
   // Ensure it's within the scripts directory
   const normalizedBase = path.resolve(scriptsDir) + path.SEPARATOR;
-  if (!resolved.startsWith(normalizedBase) && resolved !== path.resolve(scriptsDir)) {
+  if (
+    !resolved.startsWith(normalizedBase) &&
+    resolved !== path.resolve(scriptsDir)
+  ) {
     return {
       ok: false,
       error: `Script path "${scriptRelative}" escapes the scripts directory`,
@@ -134,9 +137,7 @@ export async function executeScript(
   const cmdArray = buildCommand(job, pathResult.resolved, runtime);
 
   // Set up abort controller for timeout
-  const ac = job.timeout_minutes
-    ? new AbortController()
-    : null;
+  const ac = job.timeout_minutes ? new AbortController() : null;
 
   const timeoutId = ac && job.timeout_minutes
     ? setTimeout(() => ac.abort(), job.timeout_minutes * 60 * 1000)
@@ -173,7 +174,9 @@ export async function executeScript(
     }
     return {
       success: false,
-      output: `Execution error: ${err instanceof Error ? err.message : String(err)}`,
+      output: `Execution error: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
       exitCode: -1,
     };
   } finally {

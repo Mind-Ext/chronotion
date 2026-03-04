@@ -1,6 +1,6 @@
 /**
  * Configuration loader.
- * Loads from local/config.jsonc with fallback to local/default_config.jsonc.
+ * Loads from local/config.jsonc with fallback to DEFAULT_CONFIG.
  */
 
 import { parse as parseJsonc } from "@std/jsonc";
@@ -12,25 +12,58 @@ const PROJECT_ROOT = path.resolve(
   "..",
 );
 
-const DEFAULT_CONFIG: AppConfig = {
+export const DEFAULT_CONFIG: AppConfig = {
   local_mode: true,
   oneoff_mode: false,
   poll_minutes: 15,
   scripts_dir: "scripts",
   log_max_age_days: 30,
   log_max_entries: 0,
+  emojis: {
+    pending: "",
+    running: "⏳",
+    success: "✅",
+    failed: "❌",
+    error: "‼️",
+    disabled: "🚫",
+    skipped: "⏩",
+  },
+  status_text: {
+    pending: "pending",
+    running: "running",
+    success: "success",
+    failed: "failed",
+    error: "error",
+    disabled: "disabled",
+    skipped: "skipped",
+  },
 };
 
-/** Load and merge config from JSONC files */
-export async function loadConfig(): Promise<AppConfig> {
-  const defaults = await loadJsoncFile(
-    path.join(PROJECT_ROOT, "local", "config_default.jsonc"),
-  );
-  const overrides = await loadJsoncFile(
-    path.join(PROJECT_ROOT, "local", "config.jsonc"),
-  );
+/**
+ * Load and merge config from a JSONC file.
+ * @param configPath Optional path to a specific config file. Defaults to local/config.jsonc
+ */
+export async function loadConfig(
+  configPath?: string,
+): Promise<AppConfig> {
+  const targetPath = configPath ??
+    path.join(PROJECT_ROOT, "local", "config.jsonc");
 
-  const merged = { ...DEFAULT_CONFIG, ...defaults, ...overrides };
+  let overrides: Partial<AppConfig> = {};
+
+  try {
+    const text = await Deno.readTextFile(targetPath);
+    overrides = parseJsonc(text) as Partial<AppConfig>;
+  } catch (_error) {
+    if (configPath) {
+      console.warn(
+        `Warning: Custom config file not found or invalid at ${configPath}. Using defaults.`,
+      );
+    }
+    // If it's the default path and not found, we just quietly use DEFAULT_CONFIG.
+  }
+
+  const merged = { ...DEFAULT_CONFIG, ...overrides };
 
   // Ensure poll_minutes is at least 1
   merged.poll_minutes = Math.max(1, merged.poll_minutes);
@@ -41,17 +74,6 @@ export async function loadConfig(): Promise<AppConfig> {
   }
 
   return merged;
-}
-
-async function loadJsoncFile(
-  filePath: string,
-): Promise<Partial<AppConfig>> {
-  try {
-    const text = await Deno.readTextFile(filePath);
-    return parseJsonc(text) as Partial<AppConfig>;
-  } catch {
-    return {};
-  }
 }
 
 export { PROJECT_ROOT };

@@ -1,0 +1,39 @@
+{
+  // Run without Notion sync, using only local queue.json
+  "local_mode": true,
+
+  // Run once and exit (useful with external schedulers like cron)
+  "oneoff_mode": false,
+
+  // Minutes between each poll/execute cycle (minimum 1)
+  "poll_minutes": 15,
+
+  // Base directory for executable scripts (relative to project root)
+  "scripts_dir": "scripts",
+
+  // Max age in days and max number of log files to keep (0 = unlimited)
+  "log_max_age_days": 30,
+  "log_max_entries": 0,
+
+  // Emoji prefixes used in Notion title
+  "emojis": {
+    "pending": "",
+    "running": "⏳",
+    "success": "✅",
+    "failed": "❌",
+    "error": "‼️",
+    "disabled": "🚫",
+    "skipped": "⏩"
+  },
+
+  // Display text for statuses shown in Notion
+  "status_text": {
+    "pending": "pending",
+    "running": "running",
+    "success": "success",
+    "failed": "failed",
+    "error": "error",
+    "disabled": "disabled",
+    "skipped": "skipped"
+  }
+}

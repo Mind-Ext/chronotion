@@ -9,6 +9,7 @@ export const JOB_STATUSES = [
   "failed",
   "error",
   "disabled",
+  "skipped",
 ] as const;
 
 export type JobStatus = (typeof JOB_STATUSES)[number];
@@ -51,6 +52,10 @@ export interface AppConfig {
   log_max_age_days: number;
   /** Log cleanup: max number of log files (0 = no limit) */
   log_max_entries: number;
+  /** Emoji prefixes for status in Notion */
+  emojis: Record<JobStatus, string>;
+  /** Status display text in Notion */
+  status_text: Record<JobStatus, string>;
 }
 
 /** Queue file structure */

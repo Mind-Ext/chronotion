@@ -1,0 +1,5 @@
+.env
+local/*
+!local/config_example.jsonc
+*.md
+!README.md

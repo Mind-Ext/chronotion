@@ -64,8 +64,9 @@ export function addJob(queue: QueueData, job: JobInstance): void {
 
 /** Create a new JobInstance with defaults */
 export function createJob(
-  params: Pick<JobInstance, "script" | "args" | "run_at" | "next_in"> &
-    Partial<JobInstance>,
+  params:
+    & Pick<JobInstance, "script" | "args" | "run_at" | "next_in">
+    & Partial<JobInstance>,
 ): JobInstance {
   const now = new Date().toISOString();
   const { script, args, run_at, next_in, ...rest } = params;

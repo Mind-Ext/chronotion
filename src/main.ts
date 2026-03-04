@@ -73,7 +73,9 @@ async function executeJob(
     }
 
     // Validate macro alignment for first instance (no prev_instance)
-    if (!job.prev_instance && !dateMatchesMacro(new Date(job.run_at), job.next_in)) {
+    if (
+      !job.prev_instance && !dateMatchesMacro(new Date(job.run_at), job.next_in)
+    ) {
       updateJob(queue, job.uid, {
         status: "error",
         output:
