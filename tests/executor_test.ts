@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import {
   buildCommand,
+  buildSubprocessEnv,
   detectRuntimeCommand,
   sanitizeDenoArgs,
   validateScriptPath,
@@ -90,6 +91,30 @@ Deno.test("sanitizeDenoArgs: allows permission flags", () => {
 Deno.test("sanitizeDenoArgs: blocks dangerous flags", () => {
   const result = sanitizeDenoArgs(["--eval", "-A", "--import-map=foo"]);
   assertEquals(result.length, 0);
+});
+
+// --- Subprocess environment ---
+
+Deno.test("buildSubprocessEnv: preserves PATH, HOME, and config env", () => {
+  const result = buildSubprocessEnv(
+    { API_TOKEN: "secret", PATH: "/custom/bin" },
+    { PATH: "/usr/bin", HOME: "/home/test" },
+  );
+
+  assertEquals(result, {
+    PATH: "/custom/bin",
+    HOME: "/home/test",
+    API_TOKEN: "secret",
+  });
+});
+
+Deno.test("buildSubprocessEnv: excludes unrelated parent env", () => {
+  const result = buildSubprocessEnv(
+    {},
+    { PATH: "/usr/bin", AWS_SECRET_ACCESS_KEY: "nope" },
+  );
+
+  assertEquals(result, { PATH: "/usr/bin" });
 });
 
 // --- Command building ---

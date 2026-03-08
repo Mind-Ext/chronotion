@@ -18,3 +18,17 @@ Deno.test("loadConfig returns valid default config when no file exists", async (
   assertEquals(config.emojis.success, "✅");
   assertEquals(config.status_text.running, "running");
 });
+
+Deno.test("loadConfig merges env overrides from config", async () => {
+  const config = await loadConfig("tests/fixtures/config_with_env.jsonc");
+
+  assertEquals(config.env, {
+    default: {
+      PATH: "/custom/bin",
+    },
+    "test.ts": {
+      API_BASE_URL: "https://example.test",
+    },
+  });
+  assertEquals(config.poll_minutes, 1);
+});

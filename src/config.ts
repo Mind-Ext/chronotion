@@ -43,6 +43,9 @@ export const DEFAULT_CONFIG: AppConfig = {
     "py": ["uv", "run"],
     "sh": ["bash"],
   },
+  env: {
+    default: {},
+  },
 };
 
 /**
@@ -83,6 +86,12 @@ export async function loadConfig(
       ...DEFAULT_CONFIG.status_text,
       ...overrides.status_text,
     };
+  }
+  if (overrides.env) {
+    merged.env = { ...DEFAULT_CONFIG.env };
+    for (const [key, val] of Object.entries(overrides.env)) {
+      merged.env[key] = { ...(merged.env[key] || {}), ...val };
+    }
   }
 
   // Ensure poll_minutes is at least 1

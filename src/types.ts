@@ -58,6 +58,8 @@ export interface AppConfig {
   status_text: Record<JobStatus, string>;
   /** Mapping of file extensions (without dot) to the command array used to run them. Example: { "py": ["uv", "run"] } */
   runtimes: Record<string, string[]>;
+  /** Environment variables explicitly forwarded to subprocesses. Key 'default' applies to all scripts. */
+  env: Record<string, Record<string, string>>;
 }
 
 /** Queue file structure */

@@ -12,6 +12,16 @@ import * as path from "@std/path";
 import type { AppConfig, JobInstance } from "./types.ts";
 
 const ALLOWED_DENO_ARG_PREFIXES = ["--allow-", "--deny-", "--unstable"];
+const FORWARDED_ENV_KEYS = ["PATH", "HOME"];
+const WINDOWS_FORWARDED_ENV_KEYS = [
+  "PATHEXT",
+  "SystemRoot",
+  "SYSTEMROOT",
+  "WINDIR",
+  "ComSpec",
+  "COMSPEC",
+  "USERPROFILE",
+];
 
 /** Detect runtime command from file extension */
 export function detectRuntimeCommand(
@@ -50,6 +60,27 @@ export function sanitizeDenoArgs(args: string[]): string[] {
   return args.filter((arg) =>
     ALLOWED_DENO_ARG_PREFIXES.some((prefix) => arg.startsWith(prefix))
   );
+}
+
+/** Build the minimal environment forwarded to subprocesses */
+export function buildSubprocessEnv(
+  configEnv: Record<string, string>,
+  parentEnv: Record<string, string> = Deno.env.toObject(),
+): Record<string, string> {
+  const forwardedKeys = Deno.build.os === "windows"
+    ? [...FORWARDED_ENV_KEYS, ...WINDOWS_FORWARDED_ENV_KEYS]
+    : FORWARDED_ENV_KEYS;
+
+  const inheritedEnv = Object.fromEntries(
+    // flatMap filters out missing keys and map valid ones in a single pass.
+    // E.g., if PATH exists but PATHEXT does not: [ [["PATH", "/usr/bin"]], [] ] flattens to [["PATH", "/usr/bin"]]
+    forwardedKeys.flatMap((key) => {
+      const value = parentEnv[key];
+      return value === undefined ? [] : [[key, value] as const];
+    }),
+  );
+
+  return { ...inheritedEnv, ...configEnv };
 }
 
 /** Build the command array for a job */
@@ -123,11 +154,18 @@ export async function executeScript(
     : null;
 
   try {
+    const scriptEnv = {
+      ...(config.env.default || {}),
+      ...(config.env[job.script] || {}),
+    };
+
     const cmd = new Deno.Command(cmdArray[0], {
       args: cmdArray.slice(1),
       stdout: "piped",
       stderr: "piped",
       signal: ac?.signal,
+      clearEnv: true,
+      env: buildSubprocessEnv(scriptEnv),
     });
 
     const process = cmd.spawn();

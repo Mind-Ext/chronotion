@@ -43,5 +43,16 @@
     "js": ["deno", "run"],
     "py": ["uv", "run"],
     "sh": ["bash"]
+  },
+
+  // Environment variables explicitly forwarded to subprocesses
+  // Parent process variables are otherwise cleared, aside from minimal runtime lookup vars like PATH
+  "env": {
+    "default": {
+      // "PATH": "/usr/local/bin:/usr/bin:/bin"
+    },
+    "my_script.ts": {
+      // "API_BASE_URL": "https://example.com"
+    }
   }
 }

@@ -1,0 +1,11 @@
+{
+  "poll_minutes": 0,
+  "env": {
+    "default": {
+      "PATH": "/custom/bin"
+    },
+    "test.ts": {
+      "API_BASE_URL": "https://example.test"
+    }
+  }
+}
