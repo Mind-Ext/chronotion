@@ -8,6 +8,7 @@
  * - Rescheduling after completion
  * - Logging job output
  * - Poll loop or one-off mode
+ * - Notion sync (pull/push) when local_mode is false
  */
 
 import { loadConfig } from "./config.ts";
@@ -16,6 +17,7 @@ import {
   addJob,
   createJob,
   loadQueue,
+  mergeWithNotion,
   saveQueue,
   updateJob,
   withQueueLock,
@@ -23,6 +25,12 @@ import {
 import { executeScript } from "./executor.ts";
 import { computeNextRun, validateNextIn } from "./schedule.ts";
 import { cleanupLogs, logOrchestrator, writeJobLog } from "./logger.ts";
+import {
+  createNextInstance,
+  fetchJobs,
+  initDatabaseSchema,
+  updateNotionJob,
+} from "./notion.ts";
 
 /** In-memory lock set to prevent double-starting jobs */
 const activeLocks = new Set<string>();
@@ -86,6 +94,7 @@ async function executeJob(
     // Update status
     const newStatus = result.success ? "success" : "failed";
 
+    let updatedJob: JobInstance | undefined;
     await withQueueLock(async () => {
       const queue = await loadQueue();
       updateJob(queue, job.uid, {
@@ -93,9 +102,26 @@ async function executeJob(
         output: result.output,
       });
       // Reschedule
-      await scheduleNext(job, queue);
+      await scheduleNext(job, queue, config);
       await saveQueue(queue);
+      updatedJob = queue.jobs.find((j) => j.uid === job.uid);
     });
+
+    // Push to Notion (error-isolated)
+    if (!config.local_mode && updatedJob) {
+      try {
+        await updateNotionJob(
+          { ...updatedJob, status: newStatus, output: result.output },
+          config,
+        );
+      } catch (err) {
+        await logOrchestrator(
+          `[${job.uid}] ${job.script}: Notion push failed - ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
 
     // Write log file
     await writeJobLog(job.uid, job.script, result.output);
@@ -111,6 +137,7 @@ async function executeJob(
 async function scheduleNext(
   job: JobInstance,
   queue: QueueData,
+  config: AppConfig,
 ): Promise<void> {
   const anchor = new Date(job.run_at);
   const result = computeNextRun(anchor, job.next_in);
@@ -132,15 +159,33 @@ async function scheduleNext(
     return;
   }
 
+  const nextRunAt = result.next.toISOString();
+
+  // Create next instance in Notion if in remote mode
+  let notionPageId: string | undefined;
+  if (!config.local_mode && job.notion_page_id) {
+    try {
+      notionPageId = await createNextInstance(job, nextRunAt, config);
+    } catch (err) {
+      await logOrchestrator(
+        `[${job.uid}] ${job.script}: Notion reschedule failed - ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
   const nextJob = createJob({
+    name: job.name,
     script: job.script,
     args: [...job.args],
     deno_args: [...job.deno_args],
-    run_at: result.next.toISOString(),
+    run_at: nextRunAt,
     next_in: job.next_in,
     prev_instance: job.uid,
     timeout_minutes: job.timeout_minutes,
     end_on: job.end_on,
+    notion_page_id: notionPageId,
   });
 
   job.next_instance = nextJob.uid;
@@ -157,6 +202,28 @@ export async function runCycle(
   config: AppConfig,
   isOneOff: boolean = false,
 ): Promise<void> {
+  // ── Pull from Notion (error-isolated) ──
+  if (!config.local_mode) {
+    try {
+      const remoteJobs = await fetchJobs();
+      await withQueueLock(async () => {
+        const localQueue = await loadQueue();
+        const merged = mergeWithNotion(localQueue, remoteJobs);
+        await saveQueue(merged);
+      });
+      await logOrchestrator(
+        `Pulled ${remoteJobs.length} job(s) from Notion`,
+      );
+    } catch (err) {
+      await logOrchestrator(
+        `Notion pull failed - ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  // ── Evaluate & Execute ──
   let dueJobs: JobInstance[] = [];
 
   await withQueueLock(async () => {
@@ -169,6 +236,26 @@ export async function runCycle(
         activeLocks.add(job.uid);
       }
       await saveQueue(queue);
+
+      // Push "running" status to Notion
+      if (!config.local_mode) {
+        for (const job of dueJobs) {
+          if (job.notion_page_id) {
+            try {
+              await updateNotionJob(
+                { ...job, status: "running" },
+                config,
+              );
+            } catch (err) {
+              await logOrchestrator(
+                `[${job.uid}] Notion status push failed - ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              );
+            }
+          }
+        }
+      }
     }
   });
 
@@ -210,6 +297,20 @@ async function main(): Promise<void> {
     console.log(`  Poll interval: ${config.poll_minutes}m`);
   }
   console.log(`  Scripts dir: ${config.scripts_dir}`);
+
+  // Initialize Notion schema if in remote mode
+  if (!config.local_mode) {
+    try {
+      await initDatabaseSchema();
+      console.log("  Notion database schema verified.");
+    } catch (err) {
+      console.error(
+        `  Warning: Notion schema init failed - ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
 
   // Crash recovery
   const queue = await loadQueue();

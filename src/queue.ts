@@ -82,6 +82,7 @@ export function createJob(
   const { script, args, run_at, next_in, ...rest } = params;
   return {
     uid: rest.uid ?? generateUid(),
+    name: rest.name,
     script,
     args,
     deno_args: [],
@@ -95,5 +96,68 @@ export function createJob(
     timeout_minutes: null,
     created_at: now,
     ...rest,
+  };
+}
+
+/**
+ * Merge remote Notion jobs with local queue state.
+ *
+ * Strategy: Remote jobs are the source of truth for *definitions*,
+ * but local jobs that are currently "running" or recently completed
+ * (status is not "pending") must NOT be overwritten by stale remote data.
+ *
+ * Jobs are matched by notion_page_id (or uid, since remote jobs use page ID as uid).
+ */
+export function mergeWithNotion(
+  local: QueueData,
+  remote: JobInstance[],
+): QueueData {
+  const localByPageId = new Map<string, JobInstance>();
+  const localWithoutPageId: JobInstance[] = [];
+
+  for (const job of local.jobs) {
+    if (job.notion_page_id) {
+      localByPageId.set(job.notion_page_id, job);
+    } else {
+      // Purely local jobs (local_mode remnants) are preserved as-is
+      localWithoutPageId.push(job);
+    }
+  }
+
+  const mergedJobs: JobInstance[] = [...localWithoutPageId];
+
+  for (const remoteJob of remote) {
+    const pageId = remoteJob.notion_page_id ?? remoteJob.uid;
+    const localJob = localByPageId.get(pageId);
+
+    if (localJob) {
+      // Local job exists — protect running/recently-completed state
+      if (
+        localJob.status === "running" ||
+        localJob.status === "success" ||
+        localJob.status === "failed"
+      ) {
+        // Keep local version — it has fresher execution state
+        mergedJobs.push(localJob);
+      } else {
+        // Local is pending/error/disabled/skipped — remote is authoritative
+        mergedJobs.push({ ...remoteJob, notion_page_id: pageId });
+      }
+      localByPageId.delete(pageId);
+    } else {
+      // New remote job not seen locally
+      mergedJobs.push({ ...remoteJob, notion_page_id: pageId });
+    }
+  }
+
+  // Any remaining local jobs with page IDs that weren't in remote
+  // (could be archived/deleted remotely — keep for now to avoid data loss)
+  for (const remaining of localByPageId.values()) {
+    mergedJobs.push(remaining);
+  }
+
+  return {
+    jobs: mergedJobs,
+    last_updated: new Date().toISOString(),
   };
 }

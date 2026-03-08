@@ -17,6 +17,8 @@ export type JobStatus = (typeof JOB_STATUSES)[number];
 export interface JobInstance {
   /** Unique identifier (hash of script + args + creation timestamp) */
   uid: string;
+  /** Optional human-readable name for the job (used as Notion Title) */
+  name?: string;
   /** Script filename relative to scripts/ directory */
   script: string;
   /** JSON array of arguments to pass to the script */
@@ -37,6 +39,8 @@ export interface JobInstance {
   next_instance: string | null;
   /** Captured stdout/stderr output */
   output: string;
+  /** Notion page ID for remote sync (undefined in local-only mode) */
+  notion_page_id?: string;
   /** Optional timeout in minutes */
   timeout_minutes: number | null;
   /** ISO-8601 timestamp of when this instance was created */
