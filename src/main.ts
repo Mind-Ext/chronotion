@@ -21,11 +21,7 @@ import {
   withQueueLock,
 } from "./queue.ts";
 import { executeScript } from "./executor.ts";
-import {
-  computeNextRun,
-  dateMatchesMacro,
-  validateNextIn,
-} from "./schedule.ts";
+import { computeNextRun, validateNextIn } from "./schedule.ts";
 import { cleanupLogs, logOrchestrator, writeJobLog } from "./logger.ts";
 
 /** In-memory lock set to prevent double-starting jobs */
@@ -78,26 +74,6 @@ async function executeJob(
       });
       await logOrchestrator(
         `[${job.uid}] ${job.script}: schedule error - ${validationError}`,
-      );
-      return;
-    }
-
-    // Validate macro alignment for first instance (no prev_instance)
-    if (
-      !job.prev_instance && !dateMatchesMacro(new Date(job.run_at), job.next_in)
-    ) {
-      await withQueueLock(async () => {
-        const queue = await loadQueue();
-        updateJob(queue, job.uid, {
-          status: "error",
-          output:
-            `First instance run_at does not align with macro "${job.next_in}". Scheduling next correct instance.`,
-        });
-        await scheduleNext(job, queue);
-        await saveQueue(queue);
-      });
-      await logOrchestrator(
-        `[${job.uid}] ${job.script}: macro misalignment, rescheduled`,
       );
       return;
     }
