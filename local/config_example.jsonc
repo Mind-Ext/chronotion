@@ -2,9 +2,6 @@
   // Run without Notion sync, using only local queue.json
   "local_mode": true,
 
-  // Run once and exit (useful with external schedulers like cron)
-  "oneoff_mode": false,
-
   // Minutes between each poll/execute cycle (minimum 1)
   "poll_minutes": 15,
 

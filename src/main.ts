@@ -169,12 +169,28 @@ export async function runCycle(config: AppConfig): Promise<void> {
 
 /** Main entry point */
 async function main(): Promise<void> {
+  const args = Deno.args;
+  const isOneOff = args.includes("--one-off");
+  const isPoll = args.includes("--poll");
+
+  if (!isOneOff && !isPoll) {
+    console.error("Error: You must specify either --one-off or --poll.");
+    Deno.exit(1);
+  }
+
+  if (isOneOff && isPoll) {
+    console.error("Error: Cannot specify both --one-off and --poll.");
+    Deno.exit(1);
+  }
+
   const config = await loadConfig();
 
   console.log("Chronotion starting...");
-  console.log(`  Mode: ${config.local_mode ? "local" : "notion"}`);
-  console.log(`  One-off: ${config.oneoff_mode}`);
-  console.log(`  Poll interval: ${config.poll_minutes}m`);
+  console.log(`  Data source: ${config.local_mode ? "local" : "notion"}`);
+  console.log(`  Execution mode: ${isOneOff ? "one-off" : "poll"}`);
+  if (!isOneOff) {
+    console.log(`  Poll interval: ${config.poll_minutes}m`);
+  }
   console.log(`  Scripts dir: ${config.scripts_dir}`);
 
   // Crash recovery
@@ -189,7 +205,7 @@ async function main(): Promise<void> {
   // Log cleanup
   await cleanupLogs(config.log_max_age_days, config.log_max_entries);
 
-  if (config.oneoff_mode) {
+  if (isOneOff) {
     // Single run
     await runCycle(config);
     console.log("One-off cycle complete.");

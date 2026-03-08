@@ -7,7 +7,6 @@ Deno.test("loadConfig returns valid default config when no file exists", async (
   const config = await loadConfig("/does/not/exist/config.jsonc");
 
   assertEquals(config.local_mode, DEFAULT_CONFIG.local_mode);
-  assertEquals(config.oneoff_mode, DEFAULT_CONFIG.oneoff_mode);
   assertEquals(config.poll_minutes, DEFAULT_CONFIG.poll_minutes);
 
   // scripts_dir should be resolved to absolute

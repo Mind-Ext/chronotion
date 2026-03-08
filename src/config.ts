@@ -14,7 +14,6 @@ const PROJECT_ROOT = path.resolve(
 
 export const DEFAULT_CONFIG: AppConfig = {
   local_mode: true,
-  oneoff_mode: false,
   poll_minutes: 15,
   scripts_dir: "scripts",
   log_max_age_days: 30,

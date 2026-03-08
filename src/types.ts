@@ -42,8 +42,6 @@ export interface JobInstance {
 export interface AppConfig {
   /** If true, Notion sync is disabled */
   local_mode: boolean;
-  /** If true, run once and terminate */
-  oneoff_mode: boolean;
   /** Minutes between each poll loop (minimum 1) */
   poll_minutes: number;
   /** Base directory for scripts (resolved to absolute) */
