@@ -11,7 +11,9 @@ function makeJob(overrides: Partial<JobInstance> = {}): JobInstance {
     run_at: new Date(Date.now() - 60000).toISOString(), // 1 min ago
     next_in: "1d",
     status: "pending",
+    end_on: null,
     prev_instance: null,
+    next_instance: null,
     output: "",
     timeout_minutes: null,
     created_at: new Date().toISOString(),

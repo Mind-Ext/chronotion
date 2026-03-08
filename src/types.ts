@@ -29,8 +29,12 @@ export interface JobInstance {
   next_in: string;
   /** Current execution status */
   status: JobStatus;
+  /** ISO-8601 timestamp when this recurring job should stop spawning new instances */
+  end_on: string | null;
   /** UID of the previous instance (for chaining) */
   prev_instance: string | null;
+  /** UID of the next instance, populated when the next job is scheduled */
+  next_instance: string | null;
   /** Captured stdout/stderr output */
   output: string;
   /** Optional timeout in minutes */

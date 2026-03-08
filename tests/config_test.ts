@@ -19,7 +19,12 @@ Deno.test("loadConfig returns valid default config when no file exists", async (
 });
 
 Deno.test("loadConfig merges env overrides from config", async () => {
-  const config = await loadConfig("tests/fixtures/config_with_env.jsonc");
+  const fixturePath = path.join(
+    path.dirname(path.fromFileUrl(import.meta.url)),
+    "fixtures",
+    "config_with_env.jsonc",
+  );
+  const config = await loadConfig(fixturePath);
 
   assertEquals(config.env, {
     default: {

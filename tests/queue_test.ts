@@ -8,18 +8,19 @@ import {
 } from "../src/queue.ts";
 import type { QueueData } from "../src/types.ts";
 
-Deno.test("generateUid produces consistent 12-char hex", () => {
-  const uid = generateUid("test.ts", ["arg1"], "2024-01-01T00:00:00Z");
-  assertEquals(uid.length, 12);
-  assertEquals(/^[0-9a-f]+$/.test(uid), true);
-  // Same inputs produce same UID
-  const uid2 = generateUid("test.ts", ["arg1"], "2024-01-01T00:00:00Z");
-  assertEquals(uid, uid2);
+Deno.test("generateUid produces valid UUID v4", () => {
+  const uid = generateUid();
+  assertEquals(uid.length, 36);
+  assertEquals(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(uid),
+    true,
+  );
 });
 
-Deno.test("generateUid differs for different inputs", () => {
-  const uid1 = generateUid("a.ts", [], "2024-01-01T00:00:00Z");
-  const uid2 = generateUid("b.ts", [], "2024-01-01T00:00:00Z");
+Deno.test("generateUid produces unique values", () => {
+  const uid1 = generateUid();
+  const uid2 = generateUid();
   assertNotEquals(uid1, uid2);
 });
 
@@ -32,7 +33,7 @@ Deno.test("createJob returns a complete JobInstance", () => {
   });
   assertEquals(job.script, "test.ts");
   assertEquals(job.status, "pending");
-  assertEquals(job.uid.length, 12);
+  assertEquals(job.uid.length, 36);
   assertEquals(job.deno_args.length, 0);
   assertEquals(job.prev_instance, null);
 });

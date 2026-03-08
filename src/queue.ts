@@ -5,7 +5,6 @@
 import * as path from "@std/path";
 import type { JobInstance, QueueData } from "./types.ts";
 import { PROJECT_ROOT } from "./config.ts";
-import { createHash } from "node:crypto";
 
 const QUEUE_PATH = path.join(PROJECT_ROOT, "local", "queue.json");
 
@@ -27,16 +26,9 @@ export async function withQueueLock<T>(action: () => Promise<T>): Promise<T> {
   }
 }
 
-/** Generate a UID from script name, args, and current timestamp */
-export function generateUid(
-  script: string,
-  args: string[],
-  timestamp?: string,
-): string {
-  const ts = timestamp ?? new Date().toISOString();
-  const hash = createHash("sha256");
-  hash.update(`${script}:${JSON.stringify(args)}:${ts}`);
-  return hash.digest("hex").slice(0, 12);
+/** Generate a unique identifier (UUID v4) */
+export function generateUid(): string {
+  return crypto.randomUUID();
 }
 
 /** Load queue data from disk */
@@ -89,14 +81,16 @@ export function createJob(
   const now = new Date().toISOString();
   const { script, args, run_at, next_in, ...rest } = params;
   return {
-    uid: generateUid(script, args, now),
+    uid: rest.uid ?? generateUid(),
     script,
     args,
     deno_args: [],
     run_at,
     next_in,
     status: "pending",
+    end_on: null,
     prev_instance: null,
+    next_instance: null,
     output: "",
     timeout_minutes: null,
     created_at: now,

@@ -148,6 +148,14 @@ async function scheduleNext(
     return; // One-off job or error, no rescheduling
   }
 
+  // Check end_on
+  if (job.end_on && result.next.getTime() > new Date(job.end_on).getTime()) {
+    await logOrchestrator(
+      `[${job.uid}] ${job.script}: reached end_on date, not rescheduling`,
+    );
+    return;
+  }
+
   const nextJob = createJob({
     script: job.script,
     args: [...job.args],
@@ -156,7 +164,11 @@ async function scheduleNext(
     next_in: job.next_in,
     prev_instance: job.uid,
     timeout_minutes: job.timeout_minutes,
+    end_on: job.end_on,
   });
+
+  job.next_instance = nextJob.uid;
+  updateJob(queue, job.uid, { next_instance: nextJob.uid });
 
   addJob(queue, nextJob);
   await logOrchestrator(
