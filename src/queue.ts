@@ -9,6 +9,24 @@ import { createHash } from "node:crypto";
 
 const QUEUE_PATH = path.join(PROJECT_ROOT, "local", "queue.json");
 
+let queueLock = Promise.resolve();
+
+/** Run a function with an exclusive lock to prevent file I/O race conditions */
+export async function withQueueLock<T>(action: () => Promise<T>): Promise<T> {
+  const previousLock = queueLock;
+  let releaseLock: () => void;
+  queueLock = new Promise((resolve) => {
+    releaseLock = resolve;
+  });
+
+  try {
+    await previousLock;
+    return await action();
+  } finally {
+    releaseLock!();
+  }
+}
+
 /** Generate a UID from script name, args, and current timestamp */
 export function generateUid(
   script: string,

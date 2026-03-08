@@ -12,7 +12,14 @@
 
 import { loadConfig } from "./config.ts";
 import type { AppConfig, JobInstance, QueueData } from "./types.ts";
-import { addJob, createJob, loadQueue, saveQueue, updateJob } from "./queue.ts";
+import {
+  addJob,
+  createJob,
+  loadQueue,
+  saveQueue,
+  updateJob,
+  withQueueLock,
+} from "./queue.ts";
 import { executeScript } from "./executor.ts";
 import {
   computeNextRun,
@@ -53,18 +60,21 @@ export function findDueJobs(queue: QueueData): JobInstance[] {
 /** Execute a single job: validate, run, reschedule */
 async function executeJob(
   job: JobInstance,
-  queue: QueueData,
   config: AppConfig,
 ): Promise<void> {
-  activeLocks.add(job.uid);
+  // activeLocks is already set by runCycle
 
   try {
     // Validate next_in expression
     const validationError = validateNextIn(job.next_in);
     if (validationError && validationError !== "never") {
-      updateJob(queue, job.uid, {
-        status: "error",
-        output: `Invalid schedule: ${validationError}`,
+      await withQueueLock(async () => {
+        const queue = await loadQueue();
+        updateJob(queue, job.uid, {
+          status: "error",
+          output: `Invalid schedule: ${validationError}`,
+        });
+        await saveQueue(queue);
       });
       await logOrchestrator(
         `[${job.uid}] ${job.script}: schedule error - ${validationError}`,
@@ -76,21 +86,22 @@ async function executeJob(
     if (
       !job.prev_instance && !dateMatchesMacro(new Date(job.run_at), job.next_in)
     ) {
-      updateJob(queue, job.uid, {
-        status: "error",
-        output:
-          `First instance run_at does not align with macro "${job.next_in}". Scheduling next correct instance.`,
+      await withQueueLock(async () => {
+        const queue = await loadQueue();
+        updateJob(queue, job.uid, {
+          status: "error",
+          output:
+            `First instance run_at does not align with macro "${job.next_in}". Scheduling next correct instance.`,
+        });
+        await scheduleNext(job, queue);
+        await saveQueue(queue);
       });
-      await scheduleNext(job, queue);
       await logOrchestrator(
         `[${job.uid}] ${job.script}: macro misalignment, rescheduled`,
       );
       return;
     }
 
-    // Mark as running
-    updateJob(queue, job.uid, { status: "running" });
-    await saveQueue(queue);
     await logOrchestrator(`[${job.uid}] ${job.script}: started`);
 
     // Execute
@@ -98,9 +109,16 @@ async function executeJob(
 
     // Update status
     const newStatus = result.success ? "success" : "failed";
-    updateJob(queue, job.uid, {
-      status: newStatus,
-      output: result.output,
+
+    await withQueueLock(async () => {
+      const queue = await loadQueue();
+      updateJob(queue, job.uid, {
+        status: newStatus,
+        output: result.output,
+      });
+      // Reschedule
+      await scheduleNext(job, queue);
+      await saveQueue(queue);
     });
 
     // Write log file
@@ -108,9 +126,6 @@ async function executeJob(
     await logOrchestrator(
       `[${job.uid}] ${job.script}: ${newStatus} (exit ${result.exitCode})`,
     );
-
-    // Reschedule
-    await scheduleNext(job, queue);
   } finally {
     activeLocks.delete(job.uid);
   }
@@ -150,20 +165,35 @@ async function scheduleNext(
 }
 
 /** Run one evaluation cycle */
-export async function runCycle(config: AppConfig): Promise<void> {
-  const queue = await loadQueue();
+export async function runCycle(
+  config: AppConfig,
+  isOneOff: boolean = false,
+): Promise<void> {
+  let dueJobs: JobInstance[] = [];
 
-  // Find and execute due jobs concurrently
-  const dueJobs = findDueJobs(queue);
+  await withQueueLock(async () => {
+    const queue = await loadQueue();
+    dueJobs = findDueJobs(queue);
+
+    if (dueJobs.length > 0) {
+      for (const job of dueJobs) {
+        updateJob(queue, job.uid, { status: "running" });
+        activeLocks.add(job.uid);
+      }
+      await saveQueue(queue);
+    }
+  });
 
   if (dueJobs.length > 0) {
     await logOrchestrator(`Found ${dueJobs.length} due job(s)`);
 
-    await Promise.all(
-      dueJobs.map((job) => executeJob(job, queue, config)),
-    );
+    const promises = dueJobs.map((job) => executeJob(job, config));
 
-    await saveQueue(queue);
+    if (isOneOff) {
+      await Promise.all(promises);
+    } else {
+      promises.forEach((p) => p.catch(console.error));
+    }
   }
 }
 
@@ -207,7 +237,7 @@ async function main(): Promise<void> {
 
   if (isOneOff) {
     // Single run
-    await runCycle(config);
+    await runCycle(config, true);
     console.log("One-off cycle complete.");
   } else {
     // Poll loop
@@ -215,7 +245,7 @@ async function main(): Promise<void> {
     await logOrchestrator("Orchestrator started (poll mode)");
 
     while (true) {
-      await runCycle(config);
+      await runCycle(config, false);
       await new Promise((resolve) =>
         setTimeout(resolve, config.poll_minutes * 60 * 1000)
       );
