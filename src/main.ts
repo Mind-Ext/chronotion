@@ -27,6 +27,7 @@ import { computeNextRun, validateNextIn } from "./schedule.ts";
 import { cleanupLogs, logOrchestrator, writeJobLog } from "./logger.ts";
 import {
   createNextInstance,
+  FetchedJob,
   fetchJobs,
   initDatabaseSchema,
   updateNotionJob,
@@ -59,6 +60,48 @@ export function findDueJobs(queue: QueueData): JobInstance[] {
     const runAt = new Date(job.run_at).getTime();
     return runAt <= now;
   });
+}
+
+/** Validate newly pulled Notion jobs that lack an initial status */
+async function validateNewJobs(
+  remoteJobs: FetchedJob[],
+  config: AppConfig,
+): Promise<void> {
+  for (const rJob of remoteJobs) {
+    if (rJob._notion_status_is_null) {
+      let errorMsg = null;
+      if (!rJob.script || rJob.script.trim() === "") {
+        errorMsg = "Validation failed: Missing script name.";
+      } else {
+        const validationError = validateNextIn(rJob.next_in);
+        if (validationError && validationError !== "never") {
+          errorMsg = `Validation failed: Invalid schedule - ${validationError}`;
+        }
+      }
+
+      const scriptName = rJob.script || "unknown";
+
+      if (errorMsg) {
+        rJob.status = "error";
+        rJob.output = errorMsg;
+        await logOrchestrator(`[${rJob.uid}] ${scriptName}: ${errorMsg}`);
+      } else {
+        rJob.status = "pending";
+        rJob.output = "Job validated and registered successfully.";
+        await logOrchestrator(`[${rJob.uid}] ${scriptName}: Validated new job`);
+      }
+
+      try {
+        await updateNotionJob(rJob, config);
+      } catch (err) {
+        await logOrchestrator(
+          `[${rJob.uid}] ${scriptName}: Notion validation push failed - ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+  }
 }
 
 /** Execute a single job: validate, run, reschedule */
@@ -208,42 +251,7 @@ export async function runCycle(
       const remoteJobs = await fetchJobs();
 
       // Proactive validation for newly created Notion jobs
-      for (const rJob of remoteJobs) {
-        if (rJob._notion_status_is_null) {
-          let errorMsg = null;
-          if (!rJob.script || rJob.script.trim() === "") {
-            errorMsg = "Validation failed: Missing script name.";
-          } else {
-            const validationError = validateNextIn(rJob.next_in);
-            if (validationError && validationError !== "never") {
-              errorMsg =
-                `Validation failed: Invalid schedule - ${validationError}`;
-            }
-          }
-
-          if (errorMsg) {
-            rJob.status = "error";
-            rJob.output = errorMsg;
-            await logOrchestrator(`[${rJob.uid}] ${errorMsg}`);
-          } else {
-            rJob.status = "pending";
-            rJob.output = "Job validated and registered successfully.";
-            await logOrchestrator(
-              `[${rJob.uid}] Validated new job: ${rJob.script}`,
-            );
-          }
-
-          try {
-            await updateNotionJob(rJob, config);
-          } catch (err) {
-            await logOrchestrator(
-              `[${rJob.uid}] Notion validation push failed - ${
-                err instanceof Error ? err.message : String(err)
-              }`,
-            );
-          }
-        }
-      }
+      await validateNewJobs(remoteJobs, config);
 
       await withQueueLock(async () => {
         const localQueue = await loadQueue();
@@ -287,7 +295,7 @@ export async function runCycle(
               );
             } catch (err) {
               await logOrchestrator(
-                `[${job.uid}] Notion status push failed - ${
+                `[${job.uid}] ${job.script}: Notion status push failed - ${
                   err instanceof Error ? err.message : String(err)
                 }`,
               );
