@@ -11,45 +11,22 @@
 
 import { Client, isFullDatabase } from "@notionhq/client";
 import type {
-  DatabaseObjectResponse as _DatabaseObjectResponse,
   PageObjectResponse,
 } from "@notionhq/client/build/src/api-endpoints.d.ts";
 import type { AppConfig, JobInstance, JobStatus } from "./types.ts";
 import { JOB_STATUSES } from "./types.ts";
-
-// ─── Output Truncation ───────────────────────────────────────────────
-
-const MAX_RICH_TEXT_LENGTH = 2000;
-const TRUNCATION_TARGET = 1950;
-
-/**
- * Truncate output for Notion's 2,000-character rich text limit.
- * Keeps the last 1,950 characters and prepends a truncation marker.
- */
-export function truncateOutput(output: string): string {
-  if (output.length <= MAX_RICH_TEXT_LENGTH) return output;
-  const skipped = output.length - TRUNCATION_TARGET;
-  const tail = output.slice(-TRUNCATION_TARGET);
-  return `[... ${skipped} characters truncated ...]\n${tail}`;
-}
-
-/**
- * Parse an argument string. Supports JSON arrays or simple space-separated strings.
- */
-function parseStringArgs(raw: string): string[] {
-  if (!raw) return [];
-  const trimmed = raw.trim();
-  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      return Array.isArray(parsed) ? parsed.map(String) : [];
-    } catch {
-      // Fallback to simple space split if JSON is invalid
-      return trimmed.split(/\s+/).filter(Boolean);
-    }
-  }
-  return trimmed.split(/\s+/).filter(Boolean);
-}
+import {
+  buildTitle,
+  getDateString,
+  getNumberValue,
+  getPlainText,
+  getRelationId,
+  getSelectValue,
+  parseStringArgs,
+  REQUIRED_PROPERTIES,
+  richText,
+  truncateOutput,
+} from "./notion_utils.ts";
 
 // ─── Client Initialization ──────────────────────────────────────────
 
@@ -88,37 +65,6 @@ export function resetClient(): void {
 }
 
 // ─── Database Schema Provisioning ───────────────────────────────────
-
-const STATUS_COLORS: Record<JobStatus, string> = {
-  pending: "purple",
-  running: "blue",
-  success: "green",
-  failed: "red",
-  error: "orange",
-  disabled: "brown",
-  skipped: "gray",
-};
-
-/** Required properties and their Notion types. */
-const REQUIRED_PROPERTIES: Record<string, object> = {
-  // "name" is the title property — databases always have one
-  name: { title: {} },
-  script: { rich_text: {} },
-  args: { rich_text: {} },
-  deno_args: { rich_text: {} },
-  run_at: { date: {} },
-  next_in: { rich_text: {} },
-  end_on: { date: {} },
-  status: {
-    select: {
-      options: JOB_STATUSES.map((s) => ({ name: s, color: STATUS_COLORS[s] })),
-    },
-  },
-  output: { rich_text: {} },
-  prev_instance: { relation: { database_id: "SELF", single_property: {} } },
-  next_instance: { relation: { database_id: "SELF", single_property: {} } },
-  timeout_minutes: { number: { format: "number" } },
-};
 
 /**
  * Ensure the database has all required properties.
@@ -184,54 +130,9 @@ export async function initDatabaseSchema(
   }
 }
 
-// ─── Property Helpers ───────────────────────────────────────────────
+// ─── Property Helpers (Re-exported for convenience or internal use) ──
 
-type NotionPage = PageObjectResponse;
-
-/** Safely extract plain text from a Notion rich_text or title array. */
-function getPlainText(
-  prop: {
-    type: "rich_text" | "title";
-    rich_text?: Array<{ plain_text: string }>;
-    title?: Array<{ plain_text: string }>;
-  } | undefined,
-): string {
-  if (!prop) return "";
-  const arr = prop.type === "title" ? prop.title : prop.rich_text;
-  if (!Array.isArray(arr)) return "";
-  return arr.map((t) => t.plain_text).join("");
-}
-
-/** Safely extract a date string from a Notion date property. */
-function getDateString(
-  prop: { type: "date"; date: { start: string } | null } | undefined,
-): string | null {
-  const start = prop?.date?.start;
-  if (!start) return null;
-  return new Date(start).toISOString();
-}
-
-/** Safely extract a select value. */
-function getSelectValue(
-  prop: { type: "select"; select: { name: string } | null } | undefined,
-): string | null {
-  return prop?.select?.name ?? null;
-}
-
-/** Safely extract a number value. */
-function getNumberValue(
-  prop: { type: "number"; number: number | null } | undefined,
-): number | null {
-  return prop?.number ?? null;
-}
-
-/** Safely extract the first relation page ID. */
-function getRelationId(
-  prop: { type: "relation"; relation: Array<{ id: string }> } | undefined,
-): string | null {
-  if (!prop?.relation || !Array.isArray(prop.relation)) return null;
-  return prop.relation[0]?.id ?? null;
-}
+export { truncateOutput };
 
 // ─── Pull Logic ─────────────────────────────────────────────────────
 
@@ -241,7 +142,7 @@ export interface FetchedJob extends JobInstance {
 }
 
 /** Convert a Notion page to a FetchedJob. */
-function pageToJob(page: NotionPage): FetchedJob {
+function pageToJob(page: PageObjectResponse): FetchedJob {
   // deno-lint-ignore no-explicit-any
   const props = page.properties as Record<string, any>;
 
@@ -313,27 +214,6 @@ export async function fetchJobs(
 }
 
 // ─── Push Logic ─────────────────────────────────────────────────────
-
-/**
- * Build the Notion title with emoji prefix.
- * E.g., "✅ sync.ts" or "⏳ backup.sh"
- */
-function buildTitle(
-  script: string,
-  status: JobStatus,
-  config: AppConfig,
-): string {
-  const emoji = config.emojis[status] ?? "";
-  return emoji ? `${emoji} ${script}` : script;
-}
-
-/** Build a rich_text array from a plain string. */
-function richText(
-  text: string,
-): Array<{ type: "text"; text: { content: string } }> {
-  if (!text) return [];
-  return [{ type: "text", text: { content: text } }];
-}
 
 /**
  * Update a Notion page with job status, output, and emoji title.

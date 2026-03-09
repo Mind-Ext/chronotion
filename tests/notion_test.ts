@@ -3,8 +3,6 @@
  *
  * These tests run against a REAL Notion test database configured via .env:
  *   NOTION_API_KEY, NOTION_TEST_DATABASE_ID
- *
- * The test database should be empty or a dedicated test database.
  */
 
 import { assertEquals, assertExists } from "@std/assert";
@@ -16,7 +14,6 @@ import {
   getDatabaseId,
   initDatabaseSchema,
   resetClient,
-  truncateOutput,
   updateNotionJob,
 } from "../src/notion.ts";
 import { DEFAULT_CONFIG } from "../src/config.ts";
@@ -30,42 +27,9 @@ const testConfig: AppConfig = {
   local_mode: false,
 };
 
-// ─── Truncation Tests (pure, no API calls) ──────────────────────────
-
-Deno.test("truncateOutput: short strings pass through unchanged", () => {
-  const input = "Hello, world!";
-  assertEquals(truncateOutput(input), input);
-});
-
-Deno.test("truncateOutput: exactly 2000 chars pass through", () => {
-  const input = "x".repeat(2000);
-  assertEquals(truncateOutput(input), input);
-});
-
-Deno.test("truncateOutput: 2001 chars get truncated", () => {
-  const input = "a".repeat(2001);
-  const result = truncateOutput(input);
-  assert(result.length <= 2000);
-  assert(result.startsWith("[..."));
-  assert(result.includes("characters truncated"));
-});
-
-Deno.test("truncateOutput: large output keeps last 1950 chars", () => {
-  const prefix = "A".repeat(5000);
-  const suffix = "B".repeat(1950);
-  const input = prefix + suffix;
-  const result = truncateOutput(input);
-  // The result should end with all the B's
-  assert(result.endsWith(suffix));
-  assert(result.length <= 2000);
-});
-
-Deno.test("truncateOutput: truncation marker shows correct count", () => {
-  const input = "x".repeat(3000);
-  const result = truncateOutput(input);
-  // skipped = 3000 - 1950 = 1050
-  assert(result.includes("1050 characters truncated"));
-});
+// Check if integration tests should be skipped
+const hasNotionEnv = !!(Deno.env.get("NOTION_API_KEY") &&
+  (Deno.env.get("NOTION_DB_ID") || Deno.env.get("NOTION_TEST_DATABASE_ID")));
 
 // ─── Integration Tests (require real Notion API) ────────────────────
 
@@ -86,6 +50,7 @@ async function cleanupTestPages(dbId: string): Promise<void> {
 
 Deno.test({
   name: "initDatabaseSchema: provisions required properties",
+  ignore: !hasNotionEnv,
   async fn() {
     const dbId = getDatabaseId();
     resetClient();
@@ -125,6 +90,7 @@ Deno.test({
 
 Deno.test({
   name: "pull/push lifecycle: create, fetch, update, verify",
+  ignore: !hasNotionEnv,
   async fn() {
     const dbId = getDatabaseId();
     resetClient();
@@ -195,6 +161,7 @@ Deno.test({
 
 Deno.test({
   name: "createNextInstance: creates linked next job in Notion",
+  ignore: !hasNotionEnv,
   async fn() {
     const dbId = getDatabaseId();
     resetClient();
@@ -279,6 +246,7 @@ Deno.test({
 
 Deno.test({
   name: "date parsing: ISO-8601 dates from Notion are handled correctly",
+  ignore: !hasNotionEnv,
   async fn() {
     const dbId = getDatabaseId();
     resetClient();
