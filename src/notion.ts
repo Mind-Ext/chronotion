@@ -235,8 +235,13 @@ function getRelationId(
 
 // ─── Pull Logic ─────────────────────────────────────────────────────
 
-/** Convert a Notion page to a JobInstance. */
-function pageToJob(page: NotionPage): JobInstance {
+export interface FetchedJob extends JobInstance {
+  /** True if the Notion page had an empty status field when pulled */
+  _notion_status_is_null: boolean;
+}
+
+/** Convert a Notion page to a FetchedJob. */
+function pageToJob(page: NotionPage): FetchedJob {
   // deno-lint-ignore no-explicit-any
   const props = page.properties as Record<string, any>;
 
@@ -253,6 +258,8 @@ function pageToJob(page: NotionPage): JobInstance {
   const nextInstance = getRelationId(props.next_instance);
   const timeoutMinutes = getNumberValue(props.timeout_minutes);
 
+  const statusIsNull = !status || !JOB_STATUSES.includes(status as JobStatus);
+
   return {
     uid: page.id, // Use Notion page ID as uid for remote jobs
     name: name || undefined,
@@ -261,9 +268,7 @@ function pageToJob(page: NotionPage): JobInstance {
     deno_args: parseStringArgs(denoArgsRaw),
     run_at: runAt ?? new Date().toISOString(),
     next_in: nextIn || "never",
-    status: (status && JOB_STATUSES.includes(status as JobStatus))
-      ? status as JobStatus
-      : "pending",
+    status: statusIsNull ? "pending" : (status as JobStatus),
     end_on: endOn,
     prev_instance: prevInstance,
     next_instance: nextInstance,
@@ -271,6 +276,7 @@ function pageToJob(page: NotionPage): JobInstance {
     notion_page_id: page.id,
     timeout_minutes: timeoutMinutes,
     created_at: page.created_time ?? new Date().toISOString(),
+    _notion_status_is_null: statusIsNull,
   };
 }
 
@@ -280,10 +286,10 @@ function pageToJob(page: NotionPage): JobInstance {
  */
 export async function fetchJobs(
   databaseId?: string,
-): Promise<JobInstance[]> {
+): Promise<FetchedJob[]> {
   const notion = getClient();
   const dbId = databaseId ?? getDatabaseId();
-  const jobs: JobInstance[] = [];
+  const jobs: FetchedJob[] = [];
 
   let hasMore = true;
   let startCursor: string | undefined = undefined;

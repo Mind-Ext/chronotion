@@ -206,6 +206,45 @@ export async function runCycle(
   if (!config.local_mode) {
     try {
       const remoteJobs = await fetchJobs();
+
+      // Proactive validation for newly created Notion jobs
+      for (const rJob of remoteJobs) {
+        if (rJob._notion_status_is_null) {
+          let errorMsg = null;
+          if (!rJob.script || rJob.script.trim() === "") {
+            errorMsg = "Validation failed: Missing script name.";
+          } else {
+            const validationError = validateNextIn(rJob.next_in);
+            if (validationError && validationError !== "never") {
+              errorMsg =
+                `Validation failed: Invalid schedule - ${validationError}`;
+            }
+          }
+
+          if (errorMsg) {
+            rJob.status = "error";
+            rJob.output = errorMsg;
+            await logOrchestrator(`[${rJob.uid}] ${errorMsg}`);
+          } else {
+            rJob.status = "pending";
+            rJob.output = "Job validated and registered successfully.";
+            await logOrchestrator(
+              `[${rJob.uid}] Validated new job: ${rJob.script}`,
+            );
+          }
+
+          try {
+            await updateNotionJob(rJob, config);
+          } catch (err) {
+            await logOrchestrator(
+              `[${rJob.uid}] Notion validation push failed - ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
+        }
+      }
+
       await withQueueLock(async () => {
         const localQueue = await loadQueue();
         const merged = mergeWithNotion(localQueue, remoteJobs);
