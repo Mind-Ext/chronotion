@@ -337,22 +337,24 @@ async function main(): Promise<void> {
 
   const config = await loadConfig();
 
-  console.log("Chronotion starting...");
-  console.log(`  Data source: ${config.local_mode ? "local" : "notion"}`);
-  console.log(`  Execution mode: ${isOneOff ? "one-off" : "poll"}`);
+  await logOrchestrator("Chronotion starting...");
+  await logOrchestrator(
+    `Data source: ${config.local_mode ? "local" : "notion"}`,
+  );
+  await logOrchestrator(`Execution mode: ${isOneOff ? "one-off" : "poll"}`);
   if (!isOneOff) {
-    console.log(`  Poll interval: ${config.poll_minutes}m`);
+    await logOrchestrator(`Poll interval: ${config.poll_minutes}m`);
   }
-  console.log(`  Scripts dir: ${config.scripts_dir}`);
+  await logOrchestrator(`Scripts dir: ${config.scripts_dir}`);
 
   // Initialize Notion schema if in remote mode
   if (!config.local_mode) {
     try {
       await initDatabaseSchema();
-      console.log("  Notion database schema verified.");
+      await logOrchestrator("Notion database schema verified.");
     } catch (err) {
-      console.error(
-        `  Warning: Notion schema init failed - ${
+      await logOrchestrator(
+        `Warning: Notion schema init failed - ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -365,7 +367,6 @@ async function main(): Promise<void> {
   if (recovered > 0) {
     await saveQueue(queue);
     await logOrchestrator(`Recovered ${recovered} zombie job(s)`);
-    console.log(`  Recovered ${recovered} zombie job(s)`);
   }
 
   // Log cleanup
@@ -374,10 +375,10 @@ async function main(): Promise<void> {
   if (isOneOff) {
     // Single run
     await runCycle(config, true);
-    console.log("One-off cycle complete.");
+    await logOrchestrator("One-off cycle complete.");
   } else {
     // Poll loop
-    console.log("Starting poll loop...");
+    await logOrchestrator("Starting poll loop...");
     await logOrchestrator("Orchestrator started (poll mode)");
 
     while (true) {

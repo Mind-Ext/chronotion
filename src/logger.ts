@@ -25,15 +25,25 @@ export async function writeJobLog(
   await Deno.writeTextFile(filePath, output + "\n");
 }
 
-/** Append to the daily orchestrator log */
+/** Append to the daily orchestrator log and print to console */
 export async function logOrchestrator(message: string): Promise<void> {
-  await ensureLogsDir();
-  const date = new Date().toISOString().slice(0, 10);
-  const filePath = path.join(LOGS_DIR, `orchestrator_${date}.log`);
   const timestamp = new Date().toISOString();
-  await Deno.writeTextFile(filePath, `[${timestamp}] ${message}\n`, {
-    append: true,
-  });
+  console.log(`[${timestamp}] ${message}`);
+
+  try {
+    await ensureLogsDir();
+    const date = timestamp.slice(0, 10);
+    const filePath = path.join(LOGS_DIR, `orchestrator_${date}.log`);
+    await Deno.writeTextFile(filePath, `[${timestamp}] ${message}\n`, {
+      append: true,
+    });
+  } catch (err) {
+    console.error(
+      `Failed to write to orchestrator log: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
 }
 
 /** Clean up old log files based on age or count limits */
