@@ -10,6 +10,7 @@ export const JOB_STATUSES = [
   "error",
   "disabled",
   "skipped",
+  "missed",
 ] as const;
 
 export type JobStatus = (typeof JOB_STATUSES)[number];
@@ -54,6 +55,8 @@ export interface AppConfig {
   poll_minutes: number;
   /** Base directory for scripts (resolved to absolute) */
   scripts_dir: string;
+  /** Maximum time in minutes a job can be overdue before it is marked as missed (0 = infinite lookback) */
+  lookback_minutes: number;
   /** Log and Queue cleanup: max age in days (0 = no limit) */
   history_max_age_days: number;
   /** Log and Queue cleanup: max number of log files/jobs (0 = no limit) */

@@ -126,6 +126,7 @@ export const STATUS_COLORS: Record<JobStatus, string> = {
   error: "orange",
   disabled: "brown",
   skipped: "gray",
+  missed: "yellow",
 };
 
 /** Required properties and their Notion types. */

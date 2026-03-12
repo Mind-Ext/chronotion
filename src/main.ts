@@ -349,19 +349,46 @@ export async function runCycle(
 
 /** Lock and claim due jobs, setting their status to running */
 async function claimDueJobs(config: AppConfig): Promise<JobInstance[]> {
-  let dueJobs: JobInstance[] = [];
+  const dueJobs: JobInstance[] = [];
 
   const processQueue = async () => {
     const queue = await loadQueue();
-    dueJobs = findDueJobs(queue);
+    const allDueJobs = findDueJobs(queue);
 
-    if (dueJobs.length === 0) return;
+    if (allDueJobs.length === 0) return;
 
-    for (const job of dueJobs) {
-      updateJob(queue, job.uid, { status: "running" });
-      activeLocks.add(job.uid);
+    const now = new Date();
+
+    for (const job of allDueJobs) {
+      const runAt = new Date(job.run_at);
+      const ageMinutes = (now.getTime() - runAt.getTime()) / 60000;
+
+      if (config.lookback_minutes > 0 && ageMinutes > config.lookback_minutes) {
+        await logOrchestrator(
+          `[${job.uid}] ${job.script}: missed due to exceeding lookback period (${
+            Math.round(ageMinutes)
+          }m > ${config.lookback_minutes}m)`,
+        );
+        updateJob(queue, job.uid, { status: "missed" });
+        await scheduleNext(job, queue, config);
+
+        // Push status to Notion if needed
+        if (!config.local_mode && job.notion_page_id) {
+          updateNotionJob({ ...job, status: "missed" }, config)
+            .catch((e: unknown) =>
+              console.error("Failed to update missed status to Notion", e)
+            );
+        }
+      } else {
+        updateJob(queue, job.uid, { status: "running" });
+        activeLocks.add(job.uid);
+        dueJobs.push(job);
+      }
     }
-    await saveQueue(queue);
+
+    if (allDueJobs.length > 0) {
+      await saveQueue(queue);
+    }
 
     // Push "running" status to Notion
     if (config.local_mode) return;

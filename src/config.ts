@@ -16,6 +16,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   local_mode: true,
   poll_minutes: 15,
   scripts_dir: "scripts",
+  lookback_minutes: 0,
   history_max_age_days: 90,
   history_max_entries: 0,
   emojis: {
@@ -23,9 +24,10 @@ export const DEFAULT_CONFIG: AppConfig = {
     running: "⏳",
     success: "✅",
     failed: "❌",
-    error: "‼️",
-    disabled: "🚫",
+    error: "🚫",
+    disabled: "💤",
     skipped: "⏩",
+    missed: "‼️",
   },
   status_text: {
     pending: "pending",
@@ -35,6 +37,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     error: "error",
     disabled: "disabled",
     skipped: "skipped",
+    missed: "missed",
   },
   runtimes: {
     "ts": ["deno", "run"],

@@ -138,6 +138,7 @@ Deno.test("buildTitle: no emoji if missing", () => {
       error: "",
       disabled: "",
       skipped: "",
+      missed: "",
     },
   };
   assertEquals(buildTitle("test.ts", "success", config), "test.ts");
