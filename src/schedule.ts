@@ -81,7 +81,12 @@ export function validateNextIn(nextIn: string): string | null {
   const intervalMatch = expr.match(
     /^(\d+)\s*(d|day|days|w|week|weeks|m|month|months|y|yr|year|years)$/,
   );
-  if (intervalMatch) return null;
+  if (intervalMatch) {
+    if (parseInt(intervalMatch[1], 10) === 0) {
+      return `Interval count must be greater than zero: "${nextIn}"`;
+    }
+    return null;
+  }
 
   // Check macro
   const macroMatch = expr.match(
@@ -125,7 +130,13 @@ function parseInterval(expr: string, anchor: Date): ScheduleResult | null {
   );
   if (!match) return null;
 
-  const count = parseInt(match[1]);
+  const count = parseInt(match[1], 10);
+  if (count === 0) {
+    return {
+      ok: false,
+      error: `Interval count must be greater than zero: "${expr}"`,
+    };
+  }
   const unit = match[2];
   const next = new Date(anchor);
 

@@ -131,6 +131,8 @@ Deno.test("validateNextIn: valid expressions", () => {
 Deno.test("validateNextIn: invalid expressions", () => {
   assertEquals(typeof validateNextIn("every day"), "string");
   assertEquals(typeof validateNextIn("abc"), "string");
+  assertEquals(typeof validateNextIn("0d"), "string");
+  assertEquals(typeof validateNextIn("0 months"), "string");
 });
 
 // --- Macro matching ---
