@@ -224,6 +224,8 @@ async function executeJob(
           status: "error",
           output: `Orchestrator Error: ${errorMsg}`,
         });
+        // Reschedule to ensure recurring jobs continue
+        await scheduleNext(job, queue, config);
         await saveQueue(queue);
         errorJob = queue.jobs.find((j) => j.uid === job.uid);
       };
