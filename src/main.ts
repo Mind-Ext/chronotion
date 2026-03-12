@@ -68,40 +68,74 @@ async function validateNewJobs(
   remoteJobs: FetchedJob[],
   config: AppConfig,
 ): Promise<void> {
-  for (const rJob of remoteJobs) {
-    if (rJob._notion_status_is_null) {
-      let errorMsg = null;
-      if (!rJob.script || rJob.script.trim() === "") {
-        errorMsg = "Validation failed: Missing script name.";
-      } else {
-        const validationError = validateNextIn(rJob.next_in);
-        if (validationError && validationError !== "never") {
-          errorMsg = `Validation failed: Invalid schedule - ${validationError}`;
+  const processQueue = async () => {
+    let queue: QueueData | null = null;
+    let queueModified = false;
+
+    for (const rJob of remoteJobs) {
+      if (rJob._notion_status_is_null) {
+        let errorMsg = null;
+        if (!rJob.script || rJob.script.trim() === "") {
+          errorMsg = "Validation failed: Missing script name.";
+        } else {
+          const validationError = validateNextIn(rJob.next_in);
+          if (validationError && validationError !== "never") {
+            errorMsg =
+              `Validation failed: Invalid schedule - ${validationError}`;
+          }
+        }
+
+        const scriptName = rJob.script || "unknown";
+
+        if (errorMsg) {
+          rJob.status = "error";
+          rJob.output = errorMsg;
+          await logOrchestrator(`[${rJob.uid}] ${scriptName}: ${errorMsg}`);
+        } else {
+          rJob.status = "pending";
+          rJob.output = "Job validated and registered successfully.";
+          await logOrchestrator(
+            `[${rJob.uid}] ${scriptName}: Validated new job`,
+          );
+        }
+
+        try {
+          await updateNotionJob(rJob, config);
+        } catch (err) {
+          await logOrchestrator(
+            `[${rJob.uid}] ${scriptName}: Notion validation push failed - ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      } else if (rJob.status === "skipped") {
+        // If user manually marked a job as skipped in Notion,
+        // we should instantly compute its next run and push it to Notion.
+        if (!queue) queue = await loadQueue();
+
+        // Ensure this skipped job isn't already processed (has a next_instance)
+        const localJob = queue.jobs.find(
+          (j) => (j.notion_page_id === rJob.uid || j.uid === rJob.uid),
+        );
+
+        // We only reschedule if it hasn't spawned a next_instance yet
+        if (localJob && !localJob.next_instance) {
+          await logOrchestrator(
+            `[${localJob.uid}] ${localJob.script}: User marked as skipped, rescheduling next instance`,
+          );
+          await scheduleNext(localJob, queue, config);
+          queueModified = true;
         }
       }
-
-      const scriptName = rJob.script || "unknown";
-
-      if (errorMsg) {
-        rJob.status = "error";
-        rJob.output = errorMsg;
-        await logOrchestrator(`[${rJob.uid}] ${scriptName}: ${errorMsg}`);
-      } else {
-        rJob.status = "pending";
-        rJob.output = "Job validated and registered successfully.";
-        await logOrchestrator(`[${rJob.uid}] ${scriptName}: Validated new job`);
-      }
-
-      try {
-        await updateNotionJob(rJob, config);
-      } catch (err) {
-        await logOrchestrator(
-          `[${rJob.uid}] ${scriptName}: Notion validation push failed - ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
     }
+
+    if (queueModified && queue) {
+      await saveQueue(queue);
+    }
+  };
+
+  if (!config.local_mode) {
+    await withQueueLock(processQueue);
   }
 }
 
