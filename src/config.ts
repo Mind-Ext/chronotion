@@ -16,8 +16,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   local_mode: true,
   poll_minutes: 15,
   scripts_dir: "scripts",
-  log_max_age_days: 30,
-  log_max_entries: 0,
+  history_max_age_days: 90,
+  history_max_entries: 0,
   emojis: {
     pending: "",
     running: "⏳",

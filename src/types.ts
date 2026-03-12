@@ -54,10 +54,10 @@ export interface AppConfig {
   poll_minutes: number;
   /** Base directory for scripts (resolved to absolute) */
   scripts_dir: string;
-  /** Log cleanup: max age in days (0 = no cleanup) */
-  log_max_age_days: number;
-  /** Log cleanup: max number of log files (0 = no limit) */
-  log_max_entries: number;
+  /** Log and Queue cleanup: max age in days (0 = no limit) */
+  history_max_age_days: number;
+  /** Log and Queue cleanup: max number of log files/jobs (0 = no limit) */
+  history_max_entries: number;
   /** Emoji prefixes for status in Notion */
   emojis: Record<JobStatus, string>;
   /** Status display text in Notion */

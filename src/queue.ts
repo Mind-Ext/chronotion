@@ -161,3 +161,55 @@ export function mergeWithNotion(
     last_updated: new Date().toISOString(),
   };
 }
+
+/** Clean up old jobs from the queue based on age or count limits */
+export function cleanupQueue(
+  queue: QueueData,
+  maxAgeDays: number,
+  maxEntries: number,
+): void {
+  if (maxAgeDays === 0 && maxEntries === 0) return;
+
+  // Only consider terminal states for deletion
+  const terminalStatuses = ["success", "failed", "error", "skipped"];
+
+  // Find all terminal jobs
+  const terminalJobs = queue.jobs.filter((j) =>
+    terminalStatuses.includes(j.status)
+  );
+
+  if (terminalJobs.length === 0) return;
+
+  // Sort oldest first based on run_at
+  terminalJobs.sort((a, b) =>
+    new Date(a.run_at).getTime() - new Date(b.run_at).getTime()
+  );
+
+  const toDelete = new Set<string>();
+  const now = Date.now();
+
+  // By age
+  if (maxAgeDays > 0) {
+    const cutoff = now - maxAgeDays * 24 * 60 * 60 * 1000;
+    for (const job of terminalJobs) {
+      if (new Date(job.run_at).getTime() < cutoff) {
+        toDelete.add(job.uid);
+      }
+    }
+  }
+
+  // By count
+  if (maxEntries > 0) {
+    const remainingTerminal = terminalJobs.filter((j) => !toDelete.has(j.uid));
+    if (remainingTerminal.length > maxEntries) {
+      const excess = remainingTerminal.length - maxEntries;
+      for (let i = 0; i < excess; i++) {
+        toDelete.add(remainingTerminal[i].uid);
+      }
+    }
+  }
+
+  if (toDelete.size > 0) {
+    queue.jobs = queue.jobs.filter((j) => !toDelete.has(j.uid));
+  }
+}

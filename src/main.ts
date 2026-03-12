@@ -15,6 +15,7 @@ import { loadConfig } from "./config.ts";
 import type { AppConfig, JobInstance, QueueData } from "./types.ts";
 import {
   addJob,
+  cleanupQueue,
   createJob,
   loadQueue,
   mergeWithNotion,
@@ -413,8 +414,24 @@ async function main(): Promise<void> {
     await logOrchestrator(`Recovered ${recovered} zombie job(s)`);
   }
 
-  // Log cleanup
-  await cleanupLogs(config.log_max_age_days, config.log_max_entries);
+  // Log and Queue cleanup
+  await cleanupLogs(config.history_max_age_days, config.history_max_entries);
+  const performQueueCleanup = async () => {
+    const queue = await loadQueue();
+    const beforeCount = queue.jobs.length;
+    cleanupQueue(
+      queue,
+      config.history_max_age_days,
+      config.history_max_entries,
+    );
+    if (queue.jobs.length < beforeCount) {
+      await saveQueue(queue);
+      await logOrchestrator(
+        `Cleaned up ${beforeCount - queue.jobs.length} old job(s) from queue`,
+      );
+    }
+  };
+  await withQueueLock(performQueueCleanup);
 
   if (isOneOff) {
     // Single run

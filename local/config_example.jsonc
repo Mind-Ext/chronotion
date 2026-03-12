@@ -8,9 +8,9 @@
   // Base directory for executable scripts (relative to project root)
   "scripts_dir": "scripts",
 
-  // Max age in days and max number of log files to keep (0 = unlimited)
-  "log_max_age_days": 30,
-  "log_max_entries": 0,
+  // Max age in days and max number of log files & historical jobs to keep (0 = unlimited)
+  "history_max_age_days": 90,
+  "history_max_entries": 0,
 
   // Emoji prefixes used in Notion title
   "emojis": {

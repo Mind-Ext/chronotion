@@ -19,8 +19,11 @@ export async function writeJobLog(
   output: string,
 ): Promise<void> {
   await ensureLogsDir();
+  const shortUid = uid.split("-")[0];
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const filename = `${timestamp}_${uid}_${script.replace(/[/\\]/g, "_")}.log`;
+  const filename = `${timestamp}_${
+    script.replace(/[/\\]/g, "_")
+  }_${shortUid}.log`;
   const filePath = path.join(LOGS_DIR, filename);
   await Deno.writeTextFile(filePath, output + "\n");
 }
@@ -33,7 +36,7 @@ export async function logOrchestrator(message: string): Promise<void> {
   try {
     await ensureLogsDir();
     const date = timestamp.slice(0, 10);
-    const filePath = path.join(LOGS_DIR, `orchestrator_${date}.log`);
+    const filePath = path.join(LOGS_DIR, `${date}_orchestrator.log`);
     await Deno.writeTextFile(filePath, `[${timestamp}] ${message}\n`, {
       append: true,
     });
