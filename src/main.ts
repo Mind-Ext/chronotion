@@ -218,8 +218,8 @@ async function scheduleNext(
   queue: QueueData,
   config: AppConfig,
 ): Promise<void> {
-  const anchor = new Date(job.run_at);
-  const result = computeNextRun(anchor, job.next_in);
+  let anchor = new Date(job.run_at);
+  let result = computeNextRun(anchor, job.next_in);
 
   if (!result.ok) {
     if (result.error !== "never") {
@@ -228,6 +228,28 @@ async function scheduleNext(
       );
     }
     return; // One-off job or error, no rescheduling
+  }
+
+  const now = new Date();
+  let iterations = 0;
+  const maxIterations = 10000;
+
+  // Fast-forward schedule if behind
+  while (result.ok && result.next < now && iterations < maxIterations) {
+    anchor = result.next;
+    result = computeNextRun(anchor, job.next_in);
+    iterations++;
+  }
+
+  if (iterations >= maxIterations) {
+    await logOrchestrator(
+      `[${job.uid}] ${job.script}: schedule too far behind, reached fast-forward limit`,
+    );
+    return;
+  }
+
+  if (!result.ok) {
+    return; // Failsafe
   }
 
   // Check end_on
