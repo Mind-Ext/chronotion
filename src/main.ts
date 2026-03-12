@@ -115,14 +115,16 @@ async function executeJob(
     // Validate next_in expression
     const validationError = validateNextIn(job.next_in);
     if (validationError && validationError !== "never") {
-      await withQueueLock(async () => {
+      const markJobAsScheduleError = async () => {
         const queue = await loadQueue();
         updateJob(queue, job.uid, {
           status: "error",
           output: `Invalid schedule: ${validationError}`,
         });
         await saveQueue(queue);
-      });
+      };
+      await withQueueLock(markJobAsScheduleError);
+
       await logOrchestrator(
         `[${job.uid}] ${job.script}: schedule error - ${validationError}`,
       );
@@ -138,7 +140,7 @@ async function executeJob(
     const newStatus = result.success ? "success" : "failed";
 
     let updatedJob: JobInstance | undefined;
-    await withQueueLock(async () => {
+    const processExecutionResult = async () => {
       const queue = await loadQueue();
       updateJob(queue, job.uid, {
         status: newStatus,
@@ -148,7 +150,8 @@ async function executeJob(
       await scheduleNext(job, queue, config);
       await saveQueue(queue);
       updatedJob = queue.jobs.find((j) => j.uid === job.uid);
-    });
+    };
+    await withQueueLock(processExecutionResult);
 
     // Push to Notion (error-isolated)
     if (!config.local_mode && updatedJob) {
@@ -171,6 +174,38 @@ async function executeJob(
     await logOrchestrator(
       `[${job.uid}] ${job.script}: ${newStatus} (exit ${result.exitCode})`,
     );
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    await logOrchestrator(
+      `[${job.uid}] ${job.script}: unexpected orchestrator error - ${errorMsg}`,
+    );
+
+    // Safely attempt to set job to error state
+    try {
+      let errorJob: JobInstance | undefined;
+      const markJobAsErrorState = async () => {
+        const queue = await loadQueue();
+        updateJob(queue, job.uid, {
+          status: "error",
+          output: `Orchestrator Error: ${errorMsg}`,
+        });
+        await saveQueue(queue);
+        errorJob = queue.jobs.find((j) => j.uid === job.uid);
+      };
+      await withQueueLock(markJobAsErrorState);
+
+      if (!config.local_mode && errorJob) {
+        await updateNotionJob(errorJob, config);
+      }
+    } catch (recoveryErr) {
+      await logOrchestrator(
+        `[${job.uid}] ${job.script}: failed to recover job state - ${
+          recoveryErr instanceof Error
+            ? recoveryErr.message
+            : String(recoveryErr)
+        }`,
+      );
+    }
   } finally {
     activeLocks.delete(job.uid);
   }
@@ -253,11 +288,14 @@ export async function runCycle(
       // Proactive validation for newly created Notion jobs
       await validateNewJobs(remoteJobs, config);
 
-      await withQueueLock(async () => {
+      const syncRemoteJobsToLocalQueue = async () => {
         const localQueue = await loadQueue();
         const merged = mergeWithNotion(localQueue, remoteJobs);
         await saveQueue(merged);
-      });
+      };
+
+      await withQueueLock(syncRemoteJobsToLocalQueue);
+
       await logOrchestrator(
         `Pulled ${remoteJobs.length} job(s) from Notion`,
       );
@@ -271,40 +309,7 @@ export async function runCycle(
   }
 
   // ── Evaluate & Execute ──
-  let dueJobs: JobInstance[] = [];
-
-  await withQueueLock(async () => {
-    const queue = await loadQueue();
-    dueJobs = findDueJobs(queue);
-
-    if (dueJobs.length > 0) {
-      for (const job of dueJobs) {
-        updateJob(queue, job.uid, { status: "running" });
-        activeLocks.add(job.uid);
-      }
-      await saveQueue(queue);
-
-      // Push "running" status to Notion
-      if (!config.local_mode) {
-        for (const job of dueJobs) {
-          if (job.notion_page_id) {
-            try {
-              await updateNotionJob(
-                { ...job, status: "running" },
-                config,
-              );
-            } catch (err) {
-              await logOrchestrator(
-                `[${job.uid}] ${job.script}: Notion status push failed - ${
-                  err instanceof Error ? err.message : String(err)
-                }`,
-              );
-            }
-          }
-        }
-      }
-    }
-  });
+  const dueJobs = await claimDueJobs(config);
 
   if (dueJobs.length > 0) {
     await logOrchestrator(`Found ${dueJobs.length} due job(s)`);
@@ -317,6 +322,45 @@ export async function runCycle(
       promises.forEach((p) => p.catch(console.error));
     }
   }
+}
+
+/** Lock and claim due jobs, setting their status to running */
+async function claimDueJobs(config: AppConfig): Promise<JobInstance[]> {
+  let dueJobs: JobInstance[] = [];
+
+  const processQueue = async () => {
+    const queue = await loadQueue();
+    dueJobs = findDueJobs(queue);
+
+    if (dueJobs.length === 0) return;
+
+    for (const job of dueJobs) {
+      updateJob(queue, job.uid, { status: "running" });
+      activeLocks.add(job.uid);
+    }
+    await saveQueue(queue);
+
+    // Push "running" status to Notion
+    if (config.local_mode) return;
+
+    for (const job of dueJobs) {
+      if (!job.notion_page_id) continue;
+
+      try {
+        await updateNotionJob({ ...job, status: "running" }, config);
+      } catch (err) {
+        await logOrchestrator(
+          `[${job.uid}] ${job.script}: Notion status push failed - ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+  };
+
+  await withQueueLock(processQueue);
+
+  return dueJobs;
 }
 
 /** Main entry point */
