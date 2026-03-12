@@ -193,5 +193,5 @@ Deno.test("buildCommand: uv with args", () => {
 Deno.test("buildCommand: bash with args", () => {
   const job = makeJob({ script: "backup.sh", args: ["/data"] });
   const cmd = buildCommand(job, "/scripts/backup.sh", ["bash"]);
-  assertEquals(cmd, ["bash", "/scripts/backup.sh", "--", "/data"]);
+  assertEquals(cmd, ["bash", "/scripts/backup.sh", "/data"]);
 });

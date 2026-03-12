@@ -96,10 +96,19 @@ export function buildCommand(
     return [...baseCmd, ...denoArgs, "--", scriptPath, ...job.args];
   }
 
+  // Tools that consume `--` before script inputs
+  if (baseCmd[0] === "uv" || baseCmd[0] === "bun") {
+    const cmd = [...baseCmd, scriptPath];
+    if (job.args.length > 0) {
+      cmd.push("--", ...job.args);
+    }
+    return cmd;
+  }
+
   // Generic case for all other runtimes
   const cmd = [...baseCmd, scriptPath];
   if (job.args.length > 0) {
-    cmd.push("--", ...job.args);
+    cmd.push(...job.args);
   }
   return cmd;
 }
