@@ -130,9 +130,16 @@ export async function executeScript(
     return { success: false, output: pathResult.error, exitCode: -1 };
   }
 
-  // Check script exists
+  // Check script exists and is a file
   try {
-    await Deno.stat(pathResult.resolved);
+    const stat = await Deno.stat(pathResult.resolved);
+    if (!stat.isFile) {
+      return {
+        success: false,
+        output: `Script is not a file: ${pathResult.resolved}`,
+        exitCode: -1,
+      };
+    }
   } catch {
     return {
       success: false,
