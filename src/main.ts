@@ -25,7 +25,7 @@ import {
 } from "./queue.ts";
 import { executeScript } from "./executor.ts";
 import { computeNextRun, validateNextIn } from "./schedule.ts";
-import { cleanupLogs, logOrchestrator, writeJobLog } from "./logger.ts";
+import { cleanupLogs, logger, setupLogger, writeJobLog } from "./logger.ts";
 import {
   createNextInstance,
   FetchedJob,
@@ -65,7 +65,7 @@ async function syncOrphanedJobsToNotion(
     try {
       await updateNotionJob(job, config);
     } catch (err) {
-      await logOrchestrator(
+      logger.error(
         `[${job.uid}] ${job.script}: Notion orphan job push failed - ${
           err instanceof Error ? err.message : String(err)
         }`,
@@ -88,7 +88,7 @@ async function finalizeOrphanedRunningJobs(config: AppConfig): Promise<void> {
 
   if (orphanedJobs.length === 0) return;
 
-  await logOrchestrator(
+  logger.info(
     `Marked ${orphanedJobs.length} orphaned running job(s) as error`,
   );
   await syncOrphanedJobsToNotion(orphanedJobs, config);
@@ -132,11 +132,11 @@ async function validateNewJobs(
         if (errorMsg) {
           rJob.status = "error";
           rJob.output = errorMsg;
-          await logOrchestrator(`[${rJob.uid}] ${scriptName}: ${errorMsg}`);
+          logger.error(`[${rJob.uid}] ${scriptName}: ${errorMsg}`);
         } else {
           rJob.status = "pending";
           rJob.output = "Job validated and registered successfully.";
-          await logOrchestrator(
+          logger.info(
             `[${rJob.uid}] ${scriptName}: Validated new job`,
           );
         }
@@ -144,7 +144,7 @@ async function validateNewJobs(
         try {
           await updateNotionJob(rJob, config);
         } catch (err) {
-          await logOrchestrator(
+          logger.error(
             `[${rJob.uid}] ${scriptName}: Notion validation push failed - ${
               err instanceof Error ? err.message : String(err)
             }`,
@@ -162,7 +162,7 @@ async function validateNewJobs(
 
         // We only reschedule if it hasn't spawned a next_instance yet
         if (localJob && !localJob.next_instance) {
-          await logOrchestrator(
+          logger.info(
             `[${localJob.uid}] ${localJob.script}: User marked as skipped, rescheduling next instance`,
           );
           await scheduleNext(localJob, queue, config);
@@ -202,13 +202,13 @@ async function executeJob(
       };
       await withQueueLock(markJobAsScheduleError);
 
-      await logOrchestrator(
+      logger.error(
         `[${job.uid}] ${job.script}: schedule error - ${validationError}`,
       );
       return;
     }
 
-    await logOrchestrator(`[${job.uid}] ${job.script}: started`);
+    logger.info(`[${job.uid}] ${job.script}: started`);
 
     // Execute
     const result = await executeScript(job, config);
@@ -238,7 +238,7 @@ async function executeJob(
           config,
         );
       } catch (err) {
-        await logOrchestrator(
+        logger.error(
           `[${job.uid}] ${job.script}: Notion push failed - ${
             err instanceof Error ? err.message : String(err)
           }`,
@@ -248,12 +248,12 @@ async function executeJob(
 
     // Write log file
     await writeJobLog(job.uid, job.script, result.output);
-    await logOrchestrator(
+    logger.info(
       `[${job.uid}] ${job.script}: ${newStatus} (exit ${result.exitCode})`,
     );
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    await logOrchestrator(
+    logger.error(
       `[${job.uid}] ${job.script}: unexpected orchestrator error - ${errorMsg}`,
     );
 
@@ -277,7 +277,7 @@ async function executeJob(
         await updateNotionJob(errorJob, config);
       }
     } catch (recoveryErr) {
-      await logOrchestrator(
+      logger.error(
         `[${job.uid}] ${job.script}: failed to recover job state - ${
           recoveryErr instanceof Error
             ? recoveryErr.message
@@ -301,7 +301,7 @@ async function scheduleNext(
 
   if (!result.ok) {
     if (result.error !== "never") {
-      await logOrchestrator(
+      logger.error(
         `[${job.uid}] ${job.script}: reschedule error - ${result.error}`,
       );
     }
@@ -320,7 +320,7 @@ async function scheduleNext(
   }
 
   if (iterations >= maxIterations) {
-    await logOrchestrator(
+    logger.warn(
       `[${job.uid}] ${job.script}: schedule too far behind, reached fast-forward limit`,
     );
     return;
@@ -332,7 +332,7 @@ async function scheduleNext(
 
   // Check end_on
   if (job.end_on && result.next.getTime() > new Date(job.end_on).getTime()) {
-    await logOrchestrator(
+    logger.info(
       `[${job.uid}] ${job.script}: reached end_on date, not rescheduling`,
     );
     return;
@@ -346,7 +346,7 @@ async function scheduleNext(
     try {
       notionPageId = await createNextInstance(job, nextRunAt, config);
     } catch (err) {
-      await logOrchestrator(
+      logger.error(
         `[${job.uid}] ${job.script}: Notion reschedule failed - ${
           err instanceof Error ? err.message : String(err)
         }`,
@@ -371,7 +371,7 @@ async function scheduleNext(
   updateJob(queue, job.uid, { next_instance: nextJob.uid });
 
   addJob(queue, nextJob);
-  await logOrchestrator(
+  logger.info(
     `[${nextJob.uid}] ${job.script}: scheduled for ${nextJob.run_at}`,
   );
 }
@@ -399,11 +399,11 @@ export async function runCycle(
 
       await withQueueLock(syncRemoteJobsToLocalQueue);
 
-      await logOrchestrator(
+      logger.info(
         `Pulled ${remoteJobs.length} job(s) from Notion`,
       );
     } catch (err) {
-      await logOrchestrator(
+      logger.error(
         `Notion pull failed - ${
           err instanceof Error ? err.message : String(err)
         }`,
@@ -415,7 +415,7 @@ export async function runCycle(
   const dueJobs = await claimDueJobs(config);
 
   if (dueJobs.length > 0) {
-    await logOrchestrator(`Found ${dueJobs.length} due job(s)`);
+    logger.info(`Found ${dueJobs.length} due job(s)`);
 
     const promises = dueJobs.map((job) => {
       const p = executeJob(job, config);
@@ -429,9 +429,7 @@ export async function runCycle(
       // Background execution: individual promises handle their own cleanup/logging,
       // but we add a failsafe catch for the orchestrator promise itself.
       promises.forEach((p) =>
-        p.catch((err) =>
-          logOrchestrator(`CRITICAL: Background task failed - ${err}`)
-        )
+        p.catch((err) => logger.error(`Background task failed - ${err}`))
       );
     }
   }
@@ -454,7 +452,7 @@ async function claimDueJobs(config: AppConfig): Promise<JobInstance[]> {
       const ageMinutes = (now.getTime() - runAt.getTime()) / 60000;
 
       if (config.lookback_minutes > 0 && ageMinutes > config.lookback_minutes) {
-        await logOrchestrator(
+        logger.warn(
           `[${job.uid}] ${job.script}: missed due to exceeding lookback period (${
             Math.round(ageMinutes)
           }m > ${config.lookback_minutes}m)`,
@@ -490,7 +488,7 @@ async function claimDueJobs(config: AppConfig): Promise<JobInstance[]> {
       try {
         await updateNotionJob({ ...job, status: "running" }, config);
       } catch (err) {
-        await logOrchestrator(
+        logger.error(
           `[${job.uid}] ${job.script}: Notion status push failed - ${
             err instanceof Error ? err.message : String(err)
           }`,
@@ -521,24 +519,25 @@ async function main(): Promise<void> {
   }
 
   const config = await loadConfig();
+  await setupLogger();
 
-  await logOrchestrator("Chronotion starting...");
-  await logOrchestrator(
+  logger.info("Chronotion starting...");
+  logger.info(
     `Data source: ${config.local_mode ? "local" : "notion"}`,
   );
-  await logOrchestrator(`Execution mode: ${isOneOff ? "one-off" : "poll"}`);
+  logger.info(`Execution mode: ${isOneOff ? "one-off" : "poll"}`);
   if (!isOneOff) {
-    await logOrchestrator(`Poll interval: ${config.poll_minutes}m`);
+    logger.info(`Poll interval: ${config.poll_minutes}m`);
   }
-  await logOrchestrator(`Scripts dir: ${config.scripts_dir}`);
+  logger.info(`Scripts dir: ${config.scripts_dir}`);
 
   // Initialize Notion schema if in remote mode
   if (!config.local_mode) {
     try {
       await initDatabaseSchema();
-      await logOrchestrator("Notion database schema verified.");
+      logger.info("Notion database schema verified.");
     } catch (err) {
-      await logOrchestrator(
+      logger.error(
         `Warning: Notion schema init failed - ${
           err instanceof Error ? err.message : String(err)
         }`,
@@ -561,7 +560,7 @@ async function main(): Promise<void> {
     );
     if (queue.jobs.length < beforeCount) {
       await saveQueue(queue);
-      await logOrchestrator(
+      logger.info(
         `Cleaned up ${beforeCount - queue.jobs.length} old job(s) from queue`,
       );
     }
@@ -571,11 +570,11 @@ async function main(): Promise<void> {
   if (isOneOff) {
     // Single run
     await runCycle(config, true);
-    await logOrchestrator("One-off cycle complete.");
+    logger.info("One-off cycle complete.");
   } else {
     // Poll loop
-    await logOrchestrator("Starting poll loop...");
-    await logOrchestrator("Orchestrator started (poll mode)");
+    logger.info("Starting poll loop...");
+    logger.info("Orchestrator started (poll mode)");
 
     while (true) {
       await runCycle(config, false);

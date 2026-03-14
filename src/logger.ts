@@ -3,6 +3,7 @@
  */
 
 import * as path from "@std/path";
+import * as log from "@std/log";
 import { PROJECT_ROOT } from "./config.ts";
 
 const LOGS_DIR = path.join(PROJECT_ROOT, "local", "logs");
@@ -11,6 +12,51 @@ const LOGS_DIR = path.join(PROJECT_ROOT, "local", "logs");
 async function ensureLogsDir(): Promise<void> {
   await Deno.mkdir(LOGS_DIR, { recursive: true });
 }
+
+/**
+ * Setup the global logger for the orchestrator.
+ *
+ * Note: Since this is a CLI tool that might run for long periods (poll mode),
+ * we use a fixed log file for the duration of the process, but the filename
+ * includes the startup date.
+ */
+export async function setupLogger(
+  level: log.LevelName = "INFO",
+): Promise<void> {
+  await ensureLogsDir();
+  const date = new Date().toISOString().slice(0, 10);
+  const logFile = path.join(LOGS_DIR, `${date}_orchestrator.log`);
+
+  await log.setup({
+    handlers: {
+      console: new log.ConsoleHandler(level, {
+        formatter: (record) => {
+          const time = record.datetime.toISOString();
+          return `[${time}] ${record.levelName.padEnd(7)} ${record.msg}`;
+        },
+      }),
+      file: new log.FileHandler(level, {
+        filename: logFile,
+        formatter: (record) => {
+          const time = record.datetime.toISOString();
+          return `[${time}] ${record.levelName.padEnd(7)} ${record.msg}`;
+        },
+      }),
+    },
+    loggers: {
+      default: {
+        level: level,
+        handlers: ["console", "file"],
+      },
+    },
+  });
+}
+
+/**
+ * Proxy for the default logger to keep existing API simple
+ * while we transition.
+ */
+export const logger = log.getLogger();
 
 /** Write a job's output to a per-instance log file */
 export async function writeJobLog(
@@ -26,27 +72,6 @@ export async function writeJobLog(
   }_${shortUid}.log`;
   const filePath = path.join(LOGS_DIR, filename);
   await Deno.writeTextFile(filePath, output + "\n");
-}
-
-/** Append to the daily orchestrator log and print to console */
-export async function logOrchestrator(message: string): Promise<void> {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ${message}`);
-
-  try {
-    await ensureLogsDir();
-    const date = timestamp.slice(0, 10);
-    const filePath = path.join(LOGS_DIR, `${date}_orchestrator.log`);
-    await Deno.writeTextFile(filePath, `[${timestamp}] ${message}\n`, {
-      append: true,
-    });
-  } catch (err) {
-    console.error(
-      `Failed to write to orchestrator log: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
 }
 
 /** Clean up old log files based on age or count limits */

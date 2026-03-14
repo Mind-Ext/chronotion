@@ -12,6 +12,7 @@
     "@std/jsonc": "jsr:@std/jsonc@^1.0.2",
     "@std/path": "jsr:@std/path@^1.1.4",
     "@notionhq/client": "npm:@notionhq/client@^2.3.0",
-    "@std/dotenv": "jsr:@std/dotenv@^0.225.6"
+    "@std/dotenv": "jsr:@std/dotenv@^0.225.6",
+    "@std/log": "jsr:@std/log@^0.224.14"
   }
 }
