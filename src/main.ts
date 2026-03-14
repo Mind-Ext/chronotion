@@ -34,20 +34,20 @@ import {
   updateNotionJob,
 } from "./notion.ts";
 
-/** In-memory lock set to prevent double-starting jobs */
-const activeLocks = new Set<string>();
+/** In-memory task registry to track running promises and prevent double-starting */
+const activeTasks = new Map<string, Promise<void>>();
 
-/** Mark orphaned running jobs as error when no active in-process lock exists */
+/** Mark orphaned running jobs as error when no active in-process task exists */
 export function markOrphanedRunningJobsAsError(
   queue: QueueData,
-  locks: ReadonlySet<string> = activeLocks,
+  tasks: ReadonlyMap<string, Promise<void>> = activeTasks,
 ): JobInstance[] {
   const recovered: JobInstance[] = [];
   for (const job of queue.jobs) {
-    if (job.status === "running" && !locks.has(job.uid)) {
+    if (job.status === "running" && !tasks.has(job.uid)) {
       job.status = "error";
-      job.output = "Recovered orphaned running job";
-      recovered.push(job);
+      job.output = "Orchestrator interrupted: job was left in running state";
+      recovered.push({ ...job });
     }
   }
   return recovered;
@@ -99,7 +99,7 @@ export function findDueJobs(queue: QueueData): JobInstance[] {
   const now = Date.now();
   return queue.jobs.filter((job) => {
     if (job.status !== "pending") return false;
-    if (activeLocks.has(job.uid)) return false;
+    if (activeTasks.has(job.uid)) return false;
     const runAt = new Date(job.run_at).getTime();
     return runAt <= now;
   });
@@ -186,7 +186,7 @@ async function executeJob(
   job: JobInstance,
   config: AppConfig,
 ): Promise<void> {
-  // activeLocks is already set by runCycle
+  // activeTasks registration is handled by runCycle or claimDueJobs
 
   try {
     // Validate next_in expression
@@ -286,7 +286,7 @@ async function executeJob(
       );
     }
   } finally {
-    activeLocks.delete(job.uid);
+    activeTasks.delete(job.uid);
   }
 }
 
@@ -417,12 +417,22 @@ export async function runCycle(
   if (dueJobs.length > 0) {
     await logOrchestrator(`Found ${dueJobs.length} due job(s)`);
 
-    const promises = dueJobs.map((job) => executeJob(job, config));
+    const promises = dueJobs.map((job) => {
+      const p = executeJob(job, config);
+      activeTasks.set(job.uid, p);
+      return p;
+    });
 
     if (isOneOff) {
       await Promise.all(promises);
     } else {
-      promises.forEach((p) => p.catch(console.error));
+      // Background execution: individual promises handle their own cleanup/logging,
+      // but we add a failsafe catch for the orchestrator promise itself.
+      promises.forEach((p) =>
+        p.catch((err) =>
+          logOrchestrator(`CRITICAL: Background task failed - ${err}`)
+        )
+      );
     }
   }
 }
@@ -461,7 +471,8 @@ async function claimDueJobs(config: AppConfig): Promise<JobInstance[]> {
         }
       } else {
         updateJob(queue, job.uid, { status: "running" });
-        activeLocks.add(job.uid);
+        // Reserve task in-memory with a placeholder promise to prevent double-starts
+        activeTasks.set(job.uid, Promise.resolve());
         dueJobs.push(job);
       }
     }

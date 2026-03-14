@@ -34,7 +34,10 @@ Deno.test("markOrphanedRunningJobsAsError marks unlocked running jobs as error",
   const recovered = markOrphanedRunningJobsAsError(queue);
   assertEquals(recovered.length, 2);
   assertEquals(queue.jobs[0].status, "error");
-  assertEquals(queue.jobs[0].output, "Recovered orphaned running job");
+  assertEquals(
+    queue.jobs[0].output,
+    "Orchestrator interrupted: job was left in running state",
+  );
   assertEquals(queue.jobs[1].status, "pending");
   assertEquals(queue.jobs[2].status, "error");
 });
@@ -49,16 +52,22 @@ Deno.test("markOrphanedRunningJobsAsError marks only unlocked running jobs", () 
     last_updated: "",
   };
 
-  const recovered = markOrphanedRunningJobsAsError(queue, new Set(["active"]));
+  const recovered = markOrphanedRunningJobsAsError(
+    queue,
+    new Map([["active", Promise.resolve()]]),
+  );
 
   assertEquals(recovered.length, 1);
   assertEquals(queue.jobs[0].status, "error");
-  assertEquals(queue.jobs[0].output, "Recovered orphaned running job");
+  assertEquals(
+    queue.jobs[0].output,
+    "Orchestrator interrupted: job was left in running state",
+  );
   assertEquals(queue.jobs[1].status, "running");
   assertEquals(queue.jobs[2].status, "pending");
 });
 
-Deno.test("markOrphanedRunningJobsAsError ignores running jobs with active locks", () => {
+Deno.test("markOrphanedRunningJobsAsError ignores running jobs with active tasks", () => {
   const queue: QueueData = {
     jobs: [
       makeJob({ uid: "active", status: "running" }),
@@ -66,7 +75,10 @@ Deno.test("markOrphanedRunningJobsAsError ignores running jobs with active locks
     last_updated: "",
   };
 
-  const recovered = markOrphanedRunningJobsAsError(queue, new Set(["active"]));
+  const recovered = markOrphanedRunningJobsAsError(
+    queue,
+    new Map([["active", Promise.resolve()]]),
+  );
 
   assertEquals(recovered.length, 0);
   assertEquals(queue.jobs[0].status, "running");
