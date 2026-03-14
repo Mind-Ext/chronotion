@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { findDueJobs, recoverZombieJobs } from "../src/main.ts";
+import { findDueJobs, markOrphanedRunningJobsAsError } from "../src/main.ts";
 import type { JobInstance, QueueData } from "../src/types.ts";
 
 function makeJob(overrides: Partial<JobInstance> = {}): JobInstance {
@@ -21,7 +21,7 @@ function makeJob(overrides: Partial<JobInstance> = {}): JobInstance {
   };
 }
 
-Deno.test("recoverZombieJobs marks running jobs as error", () => {
+Deno.test("markOrphanedRunningJobsAsError marks unlocked running jobs as error", () => {
   const queue: QueueData = {
     jobs: [
       makeJob({ uid: "a", status: "running" }),
@@ -31,12 +31,45 @@ Deno.test("recoverZombieJobs marks running jobs as error", () => {
     last_updated: "",
   };
 
-  const count = recoverZombieJobs(queue);
-  assertEquals(count, 2);
+  const recovered = markOrphanedRunningJobsAsError(queue);
+  assertEquals(recovered.length, 2);
   assertEquals(queue.jobs[0].status, "error");
-  assertEquals(queue.jobs[0].output, "Interrupted by system restart");
+  assertEquals(queue.jobs[0].output, "Recovered orphaned running job");
   assertEquals(queue.jobs[1].status, "pending");
   assertEquals(queue.jobs[2].status, "error");
+});
+
+Deno.test("markOrphanedRunningJobsAsError marks only unlocked running jobs", () => {
+  const queue: QueueData = {
+    jobs: [
+      makeJob({ uid: "orphan", status: "running" }),
+      makeJob({ uid: "active", status: "running" }),
+      makeJob({ uid: "pending", status: "pending" }),
+    ],
+    last_updated: "",
+  };
+
+  const recovered = markOrphanedRunningJobsAsError(queue, new Set(["active"]));
+
+  assertEquals(recovered.length, 1);
+  assertEquals(queue.jobs[0].status, "error");
+  assertEquals(queue.jobs[0].output, "Recovered orphaned running job");
+  assertEquals(queue.jobs[1].status, "running");
+  assertEquals(queue.jobs[2].status, "pending");
+});
+
+Deno.test("markOrphanedRunningJobsAsError ignores running jobs with active locks", () => {
+  const queue: QueueData = {
+    jobs: [
+      makeJob({ uid: "active", status: "running" }),
+    ],
+    last_updated: "",
+  };
+
+  const recovered = markOrphanedRunningJobsAsError(queue, new Set(["active"]));
+
+  assertEquals(recovered.length, 0);
+  assertEquals(queue.jobs[0].status, "running");
 });
 
 Deno.test("findDueJobs finds overdue pending jobs", () => {

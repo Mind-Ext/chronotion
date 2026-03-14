@@ -37,19 +37,61 @@ import {
 /** In-memory lock set to prevent double-starting jobs */
 const activeLocks = new Set<string>();
 
-/** Recover jobs stuck as "running" from a previous crash */
-export function recoverZombieJobs(queue: QueueData): number {
-  let recovered = 0;
+/** Mark orphaned running jobs as error when no active in-process lock exists */
+export function markOrphanedRunningJobsAsError(
+  queue: QueueData,
+  locks: ReadonlySet<string> = activeLocks,
+): JobInstance[] {
+  const recovered: JobInstance[] = [];
   for (const job of queue.jobs) {
-    if (job.status === "running") {
-      updateJob(queue, job.uid, {
-        status: "error",
-        output: "Interrupted by system restart",
-      });
-      recovered++;
+    if (job.status === "running" && !locks.has(job.uid)) {
+      job.status = "error";
+      job.output = "Recovered orphaned running job";
+      recovered.push(job);
     }
   }
   return recovered;
+}
+
+async function syncOrphanedJobsToNotion(
+  jobs: JobInstance[],
+  config: AppConfig,
+): Promise<void> {
+  if (config.local_mode) return;
+
+  for (const job of jobs) {
+    if (!job.notion_page_id) continue;
+
+    try {
+      await updateNotionJob(job, config);
+    } catch (err) {
+      await logOrchestrator(
+        `[${job.uid}] ${job.script}: Notion orphan job push failed - ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+}
+
+async function finalizeOrphanedRunningJobs(config: AppConfig): Promise<void> {
+  let orphanedJobs: JobInstance[] = [];
+
+  const markJobs = async () => {
+    const queue = await loadQueue();
+    orphanedJobs = markOrphanedRunningJobsAsError(queue);
+    if (orphanedJobs.length > 0) {
+      await saveQueue(queue);
+    }
+  };
+  await withQueueLock(markJobs);
+
+  if (orphanedJobs.length === 0) return;
+
+  await logOrchestrator(
+    `Marked ${orphanedJobs.length} orphaned running job(s) as error`,
+  );
+  await syncOrphanedJobsToNotion(orphanedJobs, config);
 }
 
 /** Find all jobs that are due for execution */
@@ -339,6 +381,8 @@ export async function runCycle(
   config: AppConfig,
   isOneOff: boolean = false,
 ): Promise<void> {
+  await finalizeOrphanedRunningJobs(config);
+
   // ── Pull from Notion (error-isolated) ──
   if (!config.local_mode) {
     try {
@@ -492,12 +536,7 @@ async function main(): Promise<void> {
   }
 
   // Crash recovery
-  const queue = await loadQueue();
-  const recovered = recoverZombieJobs(queue);
-  if (recovered > 0) {
-    await saveQueue(queue);
-    await logOrchestrator(`Recovered ${recovered} zombie job(s)`);
-  }
+  await finalizeOrphanedRunningJobs(config);
 
   // Log and Queue cleanup
   await cleanupLogs(config.history_max_age_days, config.history_max_entries);
