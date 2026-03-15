@@ -228,11 +228,11 @@ export function cleanupQueue(
   if (maxAgeDays === 0 && maxEntries === 0) return;
 
   // Only consider terminal states for deletion
-  const terminalStatuses = ["success", "failed", "error", "skipped"];
+  const terminalStatuses = ["success", "failed", "error", "skipped", "missed"];
 
   // Find all terminal jobs
   const terminalJobs = queue.jobs.filter((j) =>
-    terminalStatuses.includes(j.status)
+    j.status !== null && terminalStatuses.includes(j.status)
   );
 
   if (terminalJobs.length === 0) return;

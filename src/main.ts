@@ -29,7 +29,6 @@ import { computeNextRun, validateNextIn } from "./schedule.ts";
 import { cleanupLogs, logger, setupLogger, writeJobLog } from "./logger.ts";
 import {
   createNextNotionInstance,
-  FetchedJob,
   fetchJobs,
   initDatabaseSchema,
   updateNotionJob,
@@ -109,7 +108,7 @@ export function findDueJobs(queue: QueueData): JobInstance[] {
 
 /** Validate newly pulled Notion jobs that lack an initial status */
 async function validateNewJobs(
-  remoteJobs: FetchedJob[],
+  remoteJobs: JobInstance[],
   config: AppConfig,
 ): Promise<void> {
   const processQueue = async () => {
@@ -117,10 +116,12 @@ async function validateNewJobs(
     let queueModified = false;
 
     for (const rJob of remoteJobs) {
-      if (rJob._notion_status_is_null) {
+      if (rJob.status === null) {
         let errorMsg = null;
         if (!rJob.script || rJob.script.trim() === "") {
           errorMsg = "Validation failed: Missing script name.";
+        } else if (!rJob.run_at || rJob.run_at.trim() === "") {
+          errorMsg = "Validation failed: Missing run_at (start time).";
         } else {
           const validationError = validateNextIn(rJob.next_in);
           if (validationError) {

@@ -13,7 +13,7 @@ export const JOB_STATUSES = [
   "missed",
 ] as const;
 
-export type JobStatus = (typeof JOB_STATUSES)[number];
+export type JobStatus = (typeof JOB_STATUSES)[number] | null;
 
 export interface JobInstance {
   /** Unique identifier (hash of script + args + creation timestamp) */
@@ -62,9 +62,9 @@ export interface AppConfig {
   /** Log and Queue cleanup: max number of log files/jobs (0 = no limit) */
   history_max_entries: number;
   /** Emoji prefixes for status in Notion */
-  emojis: Record<JobStatus, string>;
+  emojis: Record<Exclude<JobStatus, null>, string>;
   /** Status display text in Notion */
-  status_text: Record<JobStatus, string>;
+  status_text: Record<Exclude<JobStatus, null>, string>;
   /** Mapping of file extensions (without dot) to the command array used to run them. Example: { "py": ["uv", "run"] } */
   runtimes: Record<string, string[]>;
   /** Environment variables explicitly forwarded to subprocesses. Key 'default' applies to all scripts. */

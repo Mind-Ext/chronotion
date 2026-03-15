@@ -13,7 +13,7 @@ import { Client, isFullDatabase } from "@notionhq/client";
 import type {
   PageObjectResponse,
 } from "@notionhq/client/build/src/api-endpoints.d.ts";
-import type { AppConfig, JobInstance, JobStatus } from "./types.ts";
+import type { AppConfig, JobInstance } from "./types.ts";
 import { JOB_STATUSES } from "./types.ts";
 import {
   buildTitle,
@@ -125,13 +125,8 @@ export { truncateOutput };
 
 // ─── Pull Logic ─────────────────────────────────────────────────────
 
-export interface FetchedJob extends JobInstance {
-  /** True if the Notion page had an empty status field when pulled */
-  _notion_status_is_null: boolean;
-}
-
-/** Convert a Notion page to a FetchedJob. */
-function pageToJob(page: PageObjectResponse): FetchedJob {
+/** Convert a Notion page to a JobInstance. */
+function pageToJob(page: PageObjectResponse): JobInstance {
   // deno-lint-ignore no-explicit-any
   const props = page.properties as Record<string, any>;
 
@@ -142,14 +137,14 @@ function pageToJob(page: PageObjectResponse): FetchedJob {
   const runAt = getDateString(props.run_at);
   const nextIn = getPlainText(props.next_in);
   const endOn = getDateString(props.end_on);
-  const status = getSelectValue(props.status) as JobStatus | null;
+  const statusRaw = getSelectValue(props.status);
   const output = getPlainText(props.output);
   const uid = getPlainText(props.uid);
   const prevInstance = getRelationId(props.prev_instance);
   const nextInstance = getRelationId(props.next_instance);
   const timeoutMinutes = getNumberValue(props.timeout_minutes);
 
-  const statusIsNull = !status || !JOB_STATUSES.includes(status as JobStatus);
+  const status = JOB_STATUSES.find((s) => s === statusRaw) ?? null;
 
   return {
     uid: uid || crypto.randomUUID(), // Prefer Notion-stored UID, fallback to new one if missing
@@ -157,9 +152,9 @@ function pageToJob(page: PageObjectResponse): FetchedJob {
     script,
     args: parseStringArgs(argsRaw),
     deno_args: parseStringArgs(denoArgsRaw),
-    run_at: runAt ?? new Date().toISOString(),
-    next_in: nextIn || "never",
-    status: statusIsNull ? "pending" : (status as JobStatus),
+    run_at: runAt ?? "",
+    next_in: nextIn ?? "",
+    status: status,
     end_on: endOn,
     prev_instance: prevInstance,
     next_instance: nextInstance,
@@ -167,7 +162,6 @@ function pageToJob(page: PageObjectResponse): FetchedJob {
     notion_page_id: page.id,
     timeout_minutes: timeoutMinutes,
     created_at: page.created_time ?? new Date().toISOString(),
-    _notion_status_is_null: statusIsNull,
   };
 }
 
@@ -177,10 +171,10 @@ function pageToJob(page: PageObjectResponse): FetchedJob {
  */
 export async function fetchJobs(
   databaseId?: string,
-): Promise<FetchedJob[]> {
+): Promise<JobInstance[]> {
   const notion = getClient();
   const dbId = databaseId ?? getDatabaseId();
-  const jobs: FetchedJob[] = [];
+  const jobs: JobInstance[] = [];
 
   let hasMore = true;
   let startCursor: string | undefined = undefined;
@@ -223,7 +217,7 @@ export async function updateNotionJob(
       title: richText(buildTitle(job.name || job.script, job.status, config)),
     },
     script: { rich_text: richText(job.script) },
-    status: { select: { name: job.status } },
+    status: { select: job.status ? { name: job.status } : null },
     output: { rich_text: richText(truncatedOutput) },
     uid: { rich_text: richText(job.uid) },
   };

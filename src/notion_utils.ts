@@ -147,6 +147,7 @@ export function buildTitle(
   status: JobStatus,
   config: AppConfig,
 ): string {
+  if (status === null) return script;
   const emoji = config.emojis[status] ?? "";
   return emoji ? `${emoji} ${script}` : script;
 }
@@ -161,7 +162,7 @@ export function richText(
 
 // ─── Database Schema Definition ─────────────────────────────────────
 
-export const STATUS_COLORS: Record<JobStatus, string> = {
+export const STATUS_COLORS: Record<Exclude<JobStatus, null>, string> = {
   pending: "purple",
   running: "blue",
   success: "green",
