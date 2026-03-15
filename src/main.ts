@@ -605,7 +605,13 @@ async function main(): Promise<void> {
     logger.info("Orchestrator started (poll mode)");
 
     while (true) {
-      await runCycle(config, false);
+      try {
+        await runCycle(config, false);
+      } catch (err) {
+        logger.error(
+          `Cycle failed - ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
       await new Promise((resolve) =>
         setTimeout(resolve, config.poll_minutes * 60 * 1000)
       );

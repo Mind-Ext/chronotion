@@ -5,6 +5,7 @@
 import * as path from "@std/path";
 import type { JobInstance, MergeResult, QueueData } from "./types.ts";
 import { PROJECT_ROOT } from "./config.ts";
+import { logger } from "./logger.ts";
 
 const QUEUE_PATH = path.join(PROJECT_ROOT, "local", "queue.json");
 
@@ -31,14 +32,50 @@ export function generateUid(): string {
   return crypto.randomUUID();
 }
 
-/** Load queue data from disk */
+/** Load queue data from disk with retry for mid-edit corruption */
 export async function loadQueue(): Promise<QueueData> {
-  try {
-    const text = await Deno.readTextFile(QUEUE_PATH);
-    return JSON.parse(text) as QueueData;
-  } catch {
-    return { jobs: [], last_updated: new Date().toISOString() };
+  const maxRetries = 5;
+  const retryDelay = 2000; // 2 seconds
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const text = await Deno.readTextFile(QUEUE_PATH);
+      return JSON.parse(text) as QueueData;
+    } catch (err) {
+      if (err instanceof Deno.errors.NotFound) {
+        // First run: ensure directory exists and create empty queue
+        const dir = path.dirname(QUEUE_PATH);
+        await Deno.mkdir(dir, { recursive: true });
+
+        const emptyQueue = {
+          jobs: [],
+          last_updated: new Date().toISOString(),
+        };
+        await saveQueue(emptyQueue);
+        return emptyQueue;
+      }
+
+      // If it's a SyntaxError (invalid JSON), it might be a mid-edit.
+      // Wait and retry a few times before giving up.
+      if (err instanceof SyntaxError && attempt < maxRetries) {
+        logger.warn(
+          `Queue file is invalid (mid-edit?). Retrying in ${
+            retryDelay / 1000
+          }s... (Attempt ${attempt}/${maxRetries})`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        continue;
+      }
+
+      // If it's a final attempt or a different error, re-throw.
+      throw new Error(
+        `Failed to load queue.json: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
+  throw new Error("Reached unreachable state in loadQueue");
 }
 
 /** Save queue data to disk */

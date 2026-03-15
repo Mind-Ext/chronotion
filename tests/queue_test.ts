@@ -1,13 +1,16 @@
-import { assertEquals, assertNotEquals } from "@std/assert";
+import { assertEquals, assertNotEquals, assertRejects } from "@std/assert";
 import {
   addJob,
   createJob,
   findJob,
   generateUid,
+  loadQueue,
   mergeWithNotion,
   updateJob,
 } from "../src/queue.ts";
 import type { JobInstance, QueueData } from "../src/types.ts";
+import * as path from "@std/path";
+import { PROJECT_ROOT } from "../src/config.ts";
 
 /** Helper: create a minimal JobInstance with overrides */
 function makeTestJob(overrides: Partial<JobInstance> = {}): JobInstance {
@@ -214,4 +217,125 @@ Deno.test("mergeWithNotion: success/failed local jobs are protected", () => {
   const job = result.jobs.find((j) => j.notion_page_id === "page-done");
   assertEquals(job?.status, "success"); // Not overwritten
   assertEquals(job?.output, "completed!"); // Output preserved
+});
+
+Deno.test("loadQueue: initializes empty queue.json if not found", async () => {
+  const queuePath = path.join(PROJECT_ROOT, "local", "queue.json");
+
+  // Backup
+  let backup: string | null = null;
+  try {
+    backup = await Deno.readTextFile(queuePath);
+    await Deno.remove(queuePath);
+  } catch {
+    // Ignore
+  }
+
+  try {
+    // loadQueue should now create the file
+    const queue = await loadQueue();
+    assertEquals(queue.jobs.length, 0);
+
+    // Verify file was created
+    const text = await Deno.readTextFile(queuePath);
+    const data = JSON.parse(text);
+    assertEquals(data.jobs.length, 0);
+  } finally {
+    // Restore
+    if (backup !== null) {
+      await Deno.writeTextFile(queuePath, backup);
+    }
+  }
+});
+
+Deno.test({
+  name: "loadQueue: throws error after retries on persistent invalid JSON",
+  async fn() {
+    const queuePath = path.join(PROJECT_ROOT, "local", "queue.json");
+
+    // Backup current queue
+    let backup: string | null = null;
+    try {
+      backup = await Deno.readTextFile(queuePath);
+    } catch {
+      // Ignore
+    }
+
+    try {
+      // Write invalid JSON
+      await Deno.writeTextFile(queuePath, "{ invalid json: true ");
+
+      // This should take about 10s total (5 retries * 2s)
+      await assertRejects(
+        async () => {
+          await loadQueue();
+        },
+        Error,
+        "Failed to load queue.json",
+      );
+    } finally {
+      // Restore backup
+      if (backup !== null) {
+        await Deno.writeTextFile(queuePath, backup);
+      } else {
+        try {
+          await Deno.remove(queuePath);
+        } catch {
+          // Ignore
+        }
+      }
+    }
+  },
+  // Increase timeout for this specific test
+  sanitizeOps: false,
+  sanitizeResources: false,
+});
+
+Deno.test({
+  name:
+    "loadQueue: recovers after temporary invalid JSON (mid-edit simulation)",
+  async fn() {
+    const queuePath = path.join(PROJECT_ROOT, "local", "queue.json");
+
+    // Backup current queue
+    let backup: string | null = null;
+    try {
+      backup = await Deno.readTextFile(queuePath);
+    } catch {
+      // Ignore
+    }
+
+    try {
+      // 1. Write invalid JSON
+      await Deno.writeTextFile(queuePath, "{ CORRUPT: true ");
+
+      // 2. Start loadQueue (it will start retrying)
+      const loadPromise = loadQueue();
+
+      // 3. Wait a moment and then fix the JSON
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      const validQueue: QueueData = {
+        jobs: [],
+        last_updated: new Date().toISOString(),
+      };
+      await Deno.writeTextFile(queuePath, JSON.stringify(validQueue));
+
+      // 4. loadQueue should now resolve
+      const result = await loadPromise;
+      assertEquals(result.jobs.length, 0);
+    } finally {
+      // Restore backup
+      if (backup !== null) {
+        await Deno.writeTextFile(queuePath, backup);
+      } else {
+        try {
+          await Deno.remove(queuePath);
+        } catch {
+          // Ignore
+        }
+      }
+    }
+  },
+  sanitizeOps: false,
+  sanitizeResources: false,
 });
