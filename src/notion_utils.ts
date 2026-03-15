@@ -5,8 +5,42 @@
  * making them easy to test without a real Notion API.
  */
 
+import * as log from "@std/log";
 import type { AppConfig, JobStatus } from "./types.ts";
 import { JOB_STATUSES } from "./types.ts";
+
+// ─── Environment Configuration ──────────────────────────────────────
+
+/**
+ * Validate that required Notion environment variables are present.
+ * Logs a fatal error and exits the process if validation fails.
+ */
+export function validateNotionEnvVars(): {
+  apiKey: string;
+  databaseId: string;
+} {
+  const apiKey = Deno.env.get("NOTION_API_KEY");
+  const databaseId = Deno.env.get("NOTION_DATABASE_ID") ||
+    Deno.env.get("NOTION_TEST_DATABASE_ID");
+
+  if (!apiKey || !databaseId) {
+    const missing = [];
+    if (!apiKey) missing.push("NOTION_API_KEY");
+    if (!databaseId) missing.push("NOTION_DATABASE_ID");
+
+    const logger = log.getLogger();
+    logger.error(
+      `Fatal: Missing required environment variables for Notion mode: ${
+        missing.join(
+          ", ",
+        )
+      }`,
+    );
+    Deno.exit(1);
+  }
+
+  return { apiKey, databaseId };
+}
 
 // ─── Output Truncation ───────────────────────────────────────────────
 
@@ -46,11 +80,13 @@ export function parseStringArgs(raw: string): string[] {
 
 /** Safely extract plain text from a Notion rich_text or title array. */
 export function getPlainText(
-  prop: {
-    type: "rich_text" | "title";
-    rich_text?: Array<{ plain_text: string }>;
-    title?: Array<{ plain_text: string }>;
-  } | undefined,
+  prop:
+    | {
+      type: "rich_text" | "title";
+      rich_text?: Array<{ plain_text: string }>;
+      title?: Array<{ plain_text: string }>;
+    }
+    | undefined,
 ): string {
   if (!prop) return "";
   const arr = prop.type === "title" ? prop.title : prop.rich_text;

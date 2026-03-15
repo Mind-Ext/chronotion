@@ -34,6 +34,7 @@ import {
   initDatabaseSchema,
   updateNotionJob,
 } from "./notion.ts";
+import { validateNotionEnvVars } from "./notion_utils.ts";
 
 /** In-memory task registry to track running promises and prevent double-starting */
 const activeTasks = new Map<string, Promise<void>>();
@@ -561,15 +562,18 @@ async function main(): Promise<void> {
 
   // Initialize Notion schema if in remote mode
   if (!config.local_mode) {
+    validateNotionEnvVars();
+
     try {
       await initDatabaseSchema();
       logger.info("Notion database schema verified.");
     } catch (err) {
       logger.error(
-        `Warning: Notion schema init failed - ${
+        `Fatal: Notion initialization failed - ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
+      Deno.exit(1);
     }
   }
 

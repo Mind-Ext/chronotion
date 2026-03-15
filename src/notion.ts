@@ -26,6 +26,7 @@ import {
   REQUIRED_PROPERTIES,
   richText,
   truncateOutput,
+  validateNotionEnvVars,
 } from "./notion_utils.ts";
 
 // ─── Client Initialization ──────────────────────────────────────────
@@ -35,28 +36,16 @@ let _client: Client | null = null;
 /** Get or create the Notion client (singleton). */
 export function getClient(): Client {
   if (!_client) {
-    const auth = Deno.env.get("NOTION_API_KEY");
-    if (!auth) {
-      throw new Error(
-        "NOTION_API_KEY environment variable is required when local_mode is false",
-      );
-    }
-    _client = new Client({ auth });
+    const { apiKey } = validateNotionEnvVars();
+    _client = new Client({ auth: apiKey });
   }
   return _client;
 }
 
 /** Get the database ID from env. */
 export function getDatabaseId(): string {
-  const id = Deno.env.get("NOTION_DB_ID") ||
-    Deno.env.get("NOTION_DATABASE_ID") ||
-    Deno.env.get("NOTION_TEST_DATABASE_ID");
-  if (!id) {
-    throw new Error(
-      "NOTION_DB_ID environment variable is required when local_mode is false",
-    );
-  }
-  return id;
+  const { databaseId } = validateNotionEnvVars();
+  return databaseId;
 }
 
 /** Reset client (for testing). */
