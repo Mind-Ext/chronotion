@@ -155,6 +155,7 @@ function pageToJob(page: PageObjectResponse): FetchedJob {
   const endOn = getDateString(props.end_on);
   const status = getSelectValue(props.status) as JobStatus | null;
   const output = getPlainText(props.output);
+  const uid = getPlainText(props.uid);
   const prevInstance = getRelationId(props.prev_instance);
   const nextInstance = getRelationId(props.next_instance);
   const timeoutMinutes = getNumberValue(props.timeout_minutes);
@@ -162,7 +163,7 @@ function pageToJob(page: PageObjectResponse): FetchedJob {
   const statusIsNull = !status || !JOB_STATUSES.includes(status as JobStatus);
 
   return {
-    uid: page.id, // Use Notion page ID as uid for remote jobs
+    uid: uid || crypto.randomUUID(), // Prefer Notion-stored UID, fallback to new one if missing
     name: name || undefined,
     script,
     args: parseStringArgs(argsRaw),
@@ -173,7 +174,7 @@ function pageToJob(page: PageObjectResponse): FetchedJob {
     end_on: endOn,
     prev_instance: prevInstance,
     next_instance: nextInstance,
-    output,
+    output: output,
     notion_page_id: page.id,
     timeout_minutes: timeoutMinutes,
     created_at: page.created_time ?? new Date().toISOString(),
@@ -235,6 +236,7 @@ export async function updateNotionJob(
     script: { rich_text: richText(job.script) },
     status: { select: { name: job.status } },
     output: { rich_text: richText(truncatedOutput) },
+    uid: { rich_text: richText(job.uid) },
   };
 
   // Update next_instance if set
@@ -257,10 +259,11 @@ export async function updateNotionJob(
  * Links prev_instance to the original job's page.
  * Returns the new page ID.
  */
-export async function createNextInstance(
+export async function createNextNotionInstance(
   job: JobInstance,
   nextRunAt: string,
   config: AppConfig,
+  nextUid: string,
   databaseId?: string,
 ): Promise<string> {
   const notion = getClient();
@@ -278,6 +281,7 @@ export async function createNextInstance(
     next_in: { rich_text: richText(job.next_in) },
     status: { select: { name: "pending" } },
     output: { rich_text: [] },
+    uid: { rich_text: richText(nextUid) },
   };
 
   if (job.end_on) {

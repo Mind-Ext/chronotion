@@ -76,3 +76,10 @@ export interface QueueData {
   jobs: JobInstance[];
   last_updated: string;
 }
+
+/** Result of a merge operation */
+export interface MergeResult {
+  queue: QueueData;
+  /** Jobs that have fresher local state and should be pushed back to Notion */
+  staleRemote: JobInstance[];
+}

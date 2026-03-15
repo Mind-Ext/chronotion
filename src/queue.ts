@@ -3,7 +3,7 @@
  */
 
 import * as path from "@std/path";
-import type { JobInstance, QueueData } from "./types.ts";
+import type { JobInstance, MergeResult, QueueData } from "./types.ts";
 import { PROJECT_ROOT } from "./config.ts";
 
 const QUEUE_PATH = path.join(PROJECT_ROOT, "local", "queue.json");
@@ -106,59 +106,79 @@ export function createJob(
  * but local jobs that are currently "running" or recently completed
  * (status is not "pending") must NOT be overwritten by stale remote data.
  *
- * Jobs are matched by notion_page_id (or uid, since remote jobs use page ID as uid).
+ * Jobs are matched by uid (primary) or notion_page_id (secondary).
  */
 export function mergeWithNotion(
   local: QueueData,
   remote: JobInstance[],
-): QueueData {
+): MergeResult {
+  const localByUid = new Map<string, JobInstance>();
   const localByPageId = new Map<string, JobInstance>();
-  const localWithoutPageId: JobInstance[] = [];
 
   for (const job of local.jobs) {
+    localByUid.set(job.uid, job);
     if (job.notion_page_id) {
       localByPageId.set(job.notion_page_id, job);
-    } else {
-      // Purely local jobs (local_mode remnants) are preserved as-is
-      localWithoutPageId.push(job);
     }
   }
 
-  const mergedJobs: JobInstance[] = [...localWithoutPageId];
+  const mergedJobs: JobInstance[] = [];
+  const staleRemote: JobInstance[] = [];
+  const processedLocalUids = new Set<string>();
 
   for (const remoteJob of remote) {
-    const pageId = remoteJob.notion_page_id ?? remoteJob.uid;
-    const localJob = localByPageId.get(pageId);
+    // 1. Try to find local job by UID (Discovery/Reschedule path)
+    // 2. Fallback to notion_page_id (Initial import/Manual creation path)
+    const localJob = localByUid.get(remoteJob.uid) ||
+      (remoteJob.notion_page_id
+        ? localByPageId.get(remoteJob.notion_page_id)
+        : undefined);
 
     if (localJob) {
+      processedLocalUids.add(localJob.uid);
+
       // Local job exists — protect running/recently-completed state
       if (
         localJob.status === "running" ||
         localJob.status === "success" ||
         localJob.status === "failed"
       ) {
-        // Keep local version — it has fresher execution state
-        mergedJobs.push(localJob);
+        // Keep local version — it has fresher execution state.
+        // But ensure it now has the notion_page_id if it was missing.
+        const updatedLocal = {
+          ...localJob,
+          notion_page_id: localJob.notion_page_id || remoteJob.notion_page_id,
+        };
+        mergedJobs.push(updatedLocal);
+
+        // If Notion status doesn't match local terminal status, it's stale
+        if (remoteJob.status !== localJob.status) {
+          staleRemote.push(updatedLocal);
+        }
       } else {
         // Local is pending/error/disabled/skipped — remote is authoritative
-        mergedJobs.push({ ...remoteJob, notion_page_id: pageId });
+        // Preserve local uid for stability
+        mergedJobs.push({ ...remoteJob, uid: localJob.uid });
       }
-      localByPageId.delete(pageId);
     } else {
       // New remote job not seen locally
-      mergedJobs.push({ ...remoteJob, notion_page_id: pageId });
+      mergedJobs.push(remoteJob);
     }
   }
 
-  // Any remaining local jobs with page IDs that weren't in remote
-  // (could be archived/deleted remotely — keep for now to avoid data loss)
-  for (const remaining of localByPageId.values()) {
-    mergedJobs.push(remaining);
+  // Any remaining local jobs (local-only or not yet synced)
+  for (const localJob of local.jobs) {
+    if (!processedLocalUids.has(localJob.uid)) {
+      mergedJobs.push(localJob);
+    }
   }
 
   return {
-    jobs: mergedJobs,
-    last_updated: new Date().toISOString(),
+    queue: {
+      jobs: mergedJobs,
+      last_updated: new Date().toISOString(),
+    },
+    staleRemote,
   };
 }
 

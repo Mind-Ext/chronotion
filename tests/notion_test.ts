@@ -8,7 +8,7 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { assert } from "@std/assert";
 import {
-  createNextInstance,
+  createNextNotionInstance,
   fetchJobs,
   getClient,
   getDatabaseId,
@@ -160,7 +160,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "createNextInstance: creates linked next job in Notion",
+  name: "createNextNotionInstance: creates linked next job in Notion",
   ignore: !hasNotionEnv,
   async fn() {
     const dbId = getDatabaseId();
@@ -213,10 +213,12 @@ Deno.test({
     };
 
     // Create next instance
-    const nextPageId = await createNextInstance(
+    const nextUid = crypto.randomUUID();
+    const nextPageId = await createNextNotionInstance(
       job,
       "2025-03-08T08:00:00.000Z",
       testConfig,
+      nextUid,
       dbId,
     );
 

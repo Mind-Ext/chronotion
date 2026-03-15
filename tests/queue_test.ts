@@ -105,7 +105,7 @@ Deno.test("mergeWithNotion: running local job is not overwritten by remote pendi
     }),
   ];
 
-  const result = mergeWithNotion(local, remote);
+  const { queue: result } = mergeWithNotion(local, remote);
   const job = result.jobs.find((j) => j.notion_page_id === "page-1");
   assertEquals(job?.status, "running"); // Local running state preserved
 });
@@ -132,7 +132,7 @@ Deno.test("mergeWithNotion: pending local job IS overwritten by remote", () => {
     }),
   ];
 
-  const result = mergeWithNotion(local, remote);
+  const { queue: result } = mergeWithNotion(local, remote);
   const job = result.jobs.find((j) => j.notion_page_id === "page-2");
   assertEquals(job?.script, "sync_updated.ts"); // Remote definition wins
 });
@@ -151,7 +151,7 @@ Deno.test("mergeWithNotion: new remote jobs are added", () => {
     }),
   ];
 
-  const result = mergeWithNotion(local, remote);
+  const { queue: result } = mergeWithNotion(local, remote);
   assertEquals(result.jobs.length, 1);
   assertEquals(result.jobs[0].script, "new_job.ts");
 });
@@ -176,7 +176,7 @@ Deno.test("mergeWithNotion: purely local jobs (no page_id) are preserved", () =>
     }),
   ];
 
-  const result = mergeWithNotion(local, remote);
+  const { queue: result } = mergeWithNotion(local, remote);
   assertEquals(result.jobs.length, 2);
   assertEquals(
     result.jobs.find((j) => j.uid === "local-only")?.script,
@@ -210,7 +210,7 @@ Deno.test("mergeWithNotion: success/failed local jobs are protected", () => {
     }),
   ];
 
-  const result = mergeWithNotion(local, remote);
+  const { queue: result } = mergeWithNotion(local, remote);
   const job = result.jobs.find((j) => j.notion_page_id === "page-done");
   assertEquals(job?.status, "success"); // Not overwritten
   assertEquals(job?.output, "completed!"); // Output preserved

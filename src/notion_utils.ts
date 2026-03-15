@@ -152,6 +152,7 @@ export const REQUIRED_PROPERTIES: Record<string, object> = {
     },
   },
   output: { rich_text: {} },
+  uid: { rich_text: {} },
   prev_instance: { relation: { database_id: "SELF", single_property: {} } },
   next_instance: { relation: { database_id: "SELF", single_property: {} } },
   timeout_minutes: { number: { format: "number" } },

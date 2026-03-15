@@ -17,6 +17,7 @@ import {
   addJob,
   cleanupQueue,
   createJob,
+  generateUid,
   loadQueue,
   mergeWithNotion,
   saveQueue,
@@ -27,7 +28,7 @@ import { executeScript } from "./executor.ts";
 import { computeNextRun, validateNextIn } from "./schedule.ts";
 import { cleanupLogs, logger, setupLogger, writeJobLog } from "./logger.ts";
 import {
-  createNextInstance,
+  createNextNotionInstance,
   FetchedJob,
   fetchJobs,
   initDatabaseSchema,
@@ -339,22 +340,11 @@ async function scheduleNext(
   }
 
   const nextRunAt = result.next.toISOString();
+  const nextUid = generateUid();
 
-  // Create next instance in Notion if in remote mode
-  let notionPageId: string | undefined;
-  if (!config.local_mode && job.notion_page_id) {
-    try {
-      notionPageId = await createNextInstance(job, nextRunAt, config);
-    } catch (err) {
-      logger.error(
-        `[${job.uid}] ${job.script}: Notion reschedule failed - ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-    }
-  }
-
+  // 1. Create local job first (Local First)
   const nextJob = createJob({
+    uid: nextUid,
     name: job.name,
     script: job.script,
     args: [...job.args],
@@ -364,16 +354,35 @@ async function scheduleNext(
     prev_instance: job.uid,
     timeout_minutes: job.timeout_minutes,
     end_on: job.end_on,
-    notion_page_id: notionPageId,
   });
 
   job.next_instance = nextJob.uid;
   updateJob(queue, job.uid, { next_instance: nextJob.uid });
-
   addJob(queue, nextJob);
+
   logger.info(
     `[${nextJob.uid}] ${job.script}: scheduled for ${nextJob.run_at}`,
   );
+
+  // 2. Best-effort Notion creation (Self-healing will fix on failure)
+  if (!config.local_mode && job.notion_page_id) {
+    try {
+      const notionPageId = await createNextNotionInstance(
+        job,
+        nextRunAt,
+        config,
+        nextUid,
+      );
+      // Link the ID immediately if successful
+      nextJob.notion_page_id = notionPageId;
+    } catch (err) {
+      logger.error(
+        `[${job.uid}] ${job.script}: Notion reschedule failed - ${
+          err instanceof Error ? err.message : String(err)
+        }. Will attempt discovery in next poll.`,
+      );
+    }
+  }
 }
 
 /** Run one evaluation cycle */
@@ -391,10 +400,16 @@ export async function runCycle(
       // Proactive validation for newly created Notion jobs
       await validateNewJobs(remoteJobs, config);
 
+      let staleJobs: JobInstance[] = [];
+
       const syncRemoteJobsToLocalQueue = async () => {
         const localQueue = await loadQueue();
-        const merged = mergeWithNotion(localQueue, remoteJobs);
+        const { queue: merged, staleRemote } = mergeWithNotion(
+          localQueue,
+          remoteJobs,
+        );
         await saveQueue(merged);
+        staleJobs = staleRemote;
       };
 
       await withQueueLock(syncRemoteJobsToLocalQueue);
@@ -402,6 +417,19 @@ export async function runCycle(
       logger.info(
         `Pulled ${remoteJobs.length} job(s) from Notion`,
       );
+
+      // Re-sync stale jobs back to Notion (best-effort)
+      for (const job of staleJobs) {
+        try {
+          await updateNotionJob(job, config);
+        } catch (err) {
+          logger.error(
+            `[${job.uid}] ${job.script}: Notion re-sync failed - ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }
     } catch (err) {
       logger.error(
         `Notion pull failed - ${
