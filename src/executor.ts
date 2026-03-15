@@ -175,8 +175,13 @@ export async function executeScript(
       ...(config.env[job.script] || {}),
     };
 
+    // Use custom CWD from config if specified, otherwise default to the script's directory
+    const scriptCwd = config.cwd[job.script] ||
+      path.dirname(pathResult.resolved);
+
     const cmd = new Deno.Command(cmdArray[0], {
       args: cmdArray.slice(1),
+      cwd: scriptCwd,
       stdout: "piped",
       stderr: "piped",
       signal: ac?.signal,

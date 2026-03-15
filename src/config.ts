@@ -69,11 +69,15 @@ export const DEFAULT_CONFIG: AppConfig = {
     default: {
       // "NAME": "value",
     },
-    /*
-    "your_script.ts": {
-      "API_KEY": "secret-value",
-    },
-    */
+    // "your_script.ts": {
+    //   "API_KEY": "secret-value",
+    // },
+  },
+
+  // Custom working directory overrides for scripts.
+  // Default is the directory containing the script.
+  cwd: {
+    // "your_script.ts": "/custom/path"
   },
 };
 
@@ -121,6 +125,9 @@ export async function loadConfig(
     for (const [key, val] of Object.entries(overrides.env)) {
       merged.env[key] = { ...(merged.env[key] || {}), ...val };
     }
+  }
+  if (overrides.cwd) {
+    merged.cwd = { ...DEFAULT_CONFIG.cwd, ...overrides.cwd };
   }
 
   // Ensure poll_minutes is at least 1
