@@ -1,16 +1,15 @@
-## cronotion
+## chronotion
 
-⏳ A task scheduler for executing local scripts using Notion database as remote UI. Intended for infrequent jobs. No more cron expressions. Only intuitive control. 
+⏳ A lightweight task scheduler for executing local scripts using Notion database as remote UI. Intended for infrequent jobs. No more cron expressions. Only intuitive control. 
 
 ### Getting started
 
 1. **Deno**: Install [Deno](https://deno.com/) runtime.
 2. **Notion**:
-   - Create an [internal integration](https://www.notion.so/profile/integrations/internal) to obtain `NOTION_API_KEY`.
-   - Create an emtpy database. Go to `···` menu -> `Connections` to link your integration.
-   - Find `NOTION_DATABASE_ID` from the Notion database URL like `https://www.notion.so/{workspace}/{database_id}?v={view_id}`.
-   - Copy [.env-example](./.env-example) as `.env` and fill in your `NOTION_API_KEY` and `NOTION_DATABASE_ID`.
-3. **Local mode** (Optional): To bypass Notion, set `"local_mode": true` in `local/config.jsonc` and manage your jobs by manually editing `local/queue.json`.
+   - Create an empty database. Find `NOTION_DATABASE_ID` from its URL like `https://www.notion.so/{workspace}/{database_id}?v={view_id}`
+   - Create an [internal integration](https://www.notion.so/profile/integrations/internal) to obtain the secret `NOTION_API_KEY`. Configure its "Content access" to enable it for your database.
+   - Copy `.env-example` as `.env` in this project directory and fill in your `NOTION_API_KEY` and `NOTION_DATABASE_ID`.
+3. **Local mode** (Optional): If you want to bypass Notion and run the orchestrator locally, set `"local_mode": true` in `local/config.jsonc` and manage your jobs by manually editing `local/queue.json`.
 4. **Run**:
    - **Polling mode**:
      ```bash
@@ -18,7 +17,7 @@
      ```
         Keep the orchestrator running in a loop. It will poll Notion database / local queue at a specified interval and execute due jobs.
      
-        To run continously in the background, use process managers like PM2, or system services (e.g. systemd on Linux, Task Scheduler on Windows, launchd on macOS).
+        To run continuously in the background, use process managers like PM2, or system services (e.g. systemd on Linux, Task Scheduler on Windows, launchd on macOS).
    - **One-off mode**:
      ```bash
      deno task start --one-off
@@ -63,7 +62,7 @@ Customize the orchestrator's behavior by creating `local/config.jsonc`. See [src
 - **env**: environment variables to forward to scripts.
 - **cwd**: custom working directories for specific scripts (default: scripts_dir setting).
 
-### Job Status
+### Job status
 
 - **pending**: Job is validated and waiting for `run_at`.
 - **running**: ⏳ Script is executing.
@@ -75,8 +74,13 @@ Customize the orchestrator's behavior by creating `local/config.jsonc`. See [src
 - **skipped**: ⏩ Manually set. Skips the current instance but schedules the next instance as normal.
 
 ### Disclaimer
+This project is not affiliated with or endorsed by Notion Labs, Inc.
 
-This project is vibe-coded with human planning and review.
+It was vibe-coded with human planning and review.
 Commit message prefixes indicate the model generating the code.
 
-<img src='https://count.lnfinite.space/repo/cronotion.svg?plus=1' width='0' height='0' />
+### Background
+
+The name `chronotion` is a blend of `Chronos` (Ancient Greek personification of time) and `Notion` (the productivity software). The honorable `cron` utility shares this etymology with its shortened name. The `h` returns here as the manifestation of the collective hate for `cron`'s cryptic syntax and limited expressiveness /s. Incidentally, there existed a calendar app named Cron which was acquired by Notion and rebranded as Notion Calendar.
+
+<img src='https://count.lnfinite.space/repo/chronotion.svg?plus=1' width='0' height='0' />
