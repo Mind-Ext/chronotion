@@ -13,12 +13,23 @@ const PROJECT_ROOT = path.resolve(
 );
 
 export const DEFAULT_CONFIG: AppConfig = {
-  local_mode: true,
+  // Run without Notion sync, using only local queue.json
+  local_mode: false,
+
+  // Minutes between each poll/execute cycle (minimum 1)
   poll_minutes: 15,
+
+  // Base directory for executable scripts (relative to project root)
   scripts_dir: "scripts",
+
+  // Maximum time in minutes a job can be overdue before it is marked as missed (0 = infinite lookback)
   lookback_minutes: 0,
+
+  // Max age in days and max number of log files & historical jobs to keep (0 = unlimited)
   history_max_age_days: 90,
   history_max_entries: 0,
+
+  // Emoji prefixes used in Notion title
   emojis: {
     pending: "",
     running: "⏳",
@@ -29,6 +40,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     skipped: "⏩",
     missed: "‼️",
   },
+
+  // Display text for statuses shown in Notion
   status_text: {
     pending: "pending",
     running: "running",
@@ -39,14 +52,28 @@ export const DEFAULT_CONFIG: AppConfig = {
     skipped: "skipped",
     missed: "missed",
   },
+
+  // Mapping of file extensions (without dot) to the command array used to run them
   runtimes: {
     "ts": ["deno", "run"],
     "js": ["deno", "run"],
     "py": ["uv", "run"],
     "sh": ["bash"],
   },
+
+  // Environment variables explicitly forwarded to subprocesses.
+  // Parent process variables are otherwise cleared, aside from minimal runtime lookup vars like PATH.
+  // - "default": Applied to ALL scripts.
+  // - "your_script.ts": Applied ONLY to that specific script (overrides "default").
   env: {
-    default: {},
+    default: {
+      // "NAME": "value",
+    },
+    /*
+    "your_script.ts": {
+      "API_KEY": "secret-value",
+    },
+    */
   },
 };
 
