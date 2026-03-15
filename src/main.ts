@@ -122,7 +122,7 @@ async function validateNewJobs(
           errorMsg = "Validation failed: Missing script name.";
         } else {
           const validationError = validateNextIn(rJob.next_in);
-          if (validationError && validationError !== "never") {
+          if (validationError) {
             errorMsg =
               `Validation failed: Invalid schedule - ${validationError}`;
           }
@@ -192,7 +192,7 @@ async function executeJob(
   try {
     // Validate next_in expression
     const validationError = validateNextIn(job.next_in);
-    if (validationError && validationError !== "never") {
+    if (validationError) {
       const markJobAsScheduleError = async () => {
         const queue = await loadQueue();
         updateJob(queue, job.uid, {

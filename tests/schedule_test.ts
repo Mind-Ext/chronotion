@@ -124,6 +124,7 @@ Deno.test("validateNextIn: valid expressions", () => {
   assertEquals(validateNextIn("1d"), null);
   assertEquals(validateNextIn("3 weeks"), null);
   assertEquals(validateNextIn("never"), null);
+  assertEquals(validateNextIn(""), null);
   assertEquals(validateNextIn("first monday of month"), null);
   assertEquals(validateNextIn("last day of january"), null);
 });
