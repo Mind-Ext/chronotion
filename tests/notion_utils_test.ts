@@ -90,6 +90,14 @@ Deno.test("getDateString: extracts ISO date", () => {
   assertEquals(getDateString(prop), "2023-01-01T12:00:00.000Z");
 });
 
+Deno.test("getDateString: preserves date-only strings", () => {
+  const prop = {
+    type: "date" as const,
+    date: { start: "2023-01-01" },
+  };
+  assertEquals(getDateString(prop), "2023-01-01");
+});
+
 Deno.test("getSelectValue: extracts name", () => {
   const prop = {
     type: "select" as const,

@@ -64,10 +64,17 @@ export function getDateString(
 ): string | null {
   const start = prop?.date?.start;
   if (!start) return null;
+
+  // Preserve date-only format (YYYY-MM-DD)
+  if (start.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(start)) {
+    return start;
+  }
+
+  // Normalize date-time strings to full ISO format (e.g. normalize +00:00 to Z)
   try {
     return new Date(start).toISOString();
   } catch {
-    return null;
+    return start;
   }
 }
 
