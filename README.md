@@ -73,6 +73,11 @@ Customize the orchestrator's behavior by creating `local/config.jsonc`. See [src
 - **disabled**: 💤 Manually set. Disables the current job and prevents the next instance being scheduled.
 - **skipped**: ⏩ Manually set. Skips the current instance but schedules the next instance as normal.
 
+### Tips for Notion
+
+- Create database views to see jobs on the calendar and apply custom filters.
+- Notion text properties automatically convert double dashes `--` to `—` (em dash), creating trouble for command-line arguments. To revert it, press `Ctrl / Cmd + Z` immediately after typing `--`.
+
 ### Disclaimer
 This project is not affiliated with or endorsed by Notion Labs, Inc.
 
