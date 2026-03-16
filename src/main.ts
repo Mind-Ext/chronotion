@@ -112,11 +112,35 @@ async function validateNewJobs(
   remoteJobs: JobInstance[],
   config: AppConfig,
 ): Promise<void> {
+  // Sort jobs by created_at to ensure the oldest gets to keep the UID when checking for duplicates
+  remoteJobs.sort((a, b) =>
+    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
   const processQueue = async () => {
     let queue: QueueData | null = null;
     let queueModified = false;
+    const seenUids = new Set<string>();
 
     for (const rJob of remoteJobs) {
+      // Resolve duplicate UIDs
+      if (seenUids.has(rJob.uid)) {
+        rJob.uid = crypto.randomUUID();
+        if (rJob.status !== null) {
+          try {
+            await updateNotionJob(rJob, config);
+            logger.info(`[${rJob.uid}] ${rJob.script}: Resolved duplicate UID`);
+          } catch (err) {
+            logger.error(
+              `[${rJob.uid}] ${rJob.script}: Failed to update UID - ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
+        }
+      }
+      seenUids.add(rJob.uid);
+
       if (rJob.status === null) {
         let errorMsg = null;
         if (!rJob.script || rJob.script.trim() === "") {
