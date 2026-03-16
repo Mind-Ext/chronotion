@@ -71,7 +71,6 @@ Deno.test({
       "next_in",
       "end_on",
       "status",
-      "output",
       "prev_instance",
       "next_instance",
       "timeout_minutes",

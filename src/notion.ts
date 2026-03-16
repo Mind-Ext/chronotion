@@ -13,7 +13,7 @@ import { Client, isFullDatabase } from "@notionhq/client";
 import type {
   PageObjectResponse,
 } from "@notionhq/client/build/src/api-endpoints.d.ts";
-import type { AppConfig, JobInstance } from "./types.ts";
+import type { AppConfig, JobInstance, JobStatus } from "./types.ts";
 import { JOB_STATUSES } from "./types.ts";
 import {
   buildTitle,
@@ -138,7 +138,6 @@ function pageToJob(page: PageObjectResponse): JobInstance {
   const nextIn = getPlainText(props.next_in);
   const endOn = getDateString(props.end_on);
   const statusRaw = getSelectValue(props.status);
-  const output = getPlainText(props.output);
   const uid = getPlainText(props.uid);
   const prevInstance = getRelationId(props.prev_instance);
   const nextInstance = getRelationId(props.next_instance);
@@ -158,7 +157,7 @@ function pageToJob(page: PageObjectResponse): JobInstance {
     end_on: endOn,
     prev_instance: prevInstance,
     next_instance: nextInstance,
-    output: output,
+    output: "", // Output is now stored as page content; not fetched during bulk pull for performance
     notion_page_id: page.id,
     timeout_minutes: timeoutMinutes,
     created_at: page.created_time ?? new Date().toISOString(),
@@ -200,7 +199,8 @@ export async function fetchJobs(
 // ─── Push Logic ─────────────────────────────────────────────────────
 
 /**
- * Update a Notion page with job status, output, and emoji title.
+ * Update a Notion page with job status and emoji title.
+ * Output is appended as page content (blocks).
  */
 export async function updateNotionJob(
   job: JobInstance,
@@ -209,7 +209,6 @@ export async function updateNotionJob(
   if (!job.notion_page_id) return;
 
   const notion = getClient();
-  const truncatedOutput = truncateOutput(job.output);
 
   // deno-lint-ignore no-explicit-any
   const properties: Record<string, any> = {
@@ -218,7 +217,6 @@ export async function updateNotionJob(
     },
     script: { rich_text: richText(job.script) },
     status: { select: job.status ? { name: job.status } : null },
-    output: { rich_text: richText(truncatedOutput) },
     uid: { rich_text: richText(job.uid) },
   };
 
@@ -229,10 +227,35 @@ export async function updateNotionJob(
     };
   }
 
+  // 1. Update page properties
   await notion.pages.update({
     page_id: job.notion_page_id,
     properties,
   });
+
+  // 2. Append output as a code block if job is finished and has output
+  const terminalStatuses: (JobStatus)[] = [
+    "success",
+    "failed",
+    "error",
+    "missed",
+  ];
+  if (job.output && terminalStatuses.includes(job.status)) {
+    const truncatedOutput = truncateOutput(job.output);
+    await notion.blocks.children.append({
+      block_id: job.notion_page_id,
+      children: [
+        {
+          object: "block",
+          type: "code",
+          code: {
+            rich_text: richText(truncatedOutput),
+            language: "plain text",
+          },
+        },
+      ],
+    });
+  }
 }
 
 // ─── Reschedule Logic ───────────────────────────────────────────────
@@ -263,7 +286,6 @@ export async function createNextNotionInstance(
     run_at: { date: { start: nextRunAt } },
     next_in: { rich_text: richText(job.next_in) },
     status: { select: { name: "pending" } },
-    output: { rich_text: [] },
     uid: { rich_text: richText(nextUid) },
   };
 
