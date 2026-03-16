@@ -34,6 +34,7 @@ import {
   updateNotionJob,
 } from "./notion.ts";
 import { validateNotionEnvVars } from "./notion_utils.ts";
+import "@std/dotenv/load";
 
 /** In-memory task registry to track running promises and prevent double-starting */
 const activeTasks = new Map<string, Promise<void>>();
