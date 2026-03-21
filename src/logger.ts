@@ -37,6 +37,7 @@ export async function setupLogger(
       }),
       file: new log.FileHandler(level, {
         filename: logFile,
+        bufferSize: 1,
         formatter: (record) => {
           const time = record.datetime.toISOString();
           return `[${time}] ${record.levelName.padEnd(7)} ${record.msg}`;
