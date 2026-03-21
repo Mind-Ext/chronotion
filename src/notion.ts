@@ -11,12 +11,13 @@
 
 import { Client, isFullDatabase } from "@notionhq/client";
 import type {
+  CreatePageParameters,
   PageObjectResponse,
+  UpdatePageParameters,
 } from "@notionhq/client/build/src/api-endpoints.d.ts";
 import type { AppConfig, JobInstance, JobStatus } from "./types.ts";
 import { JOB_STATUSES } from "./types.ts";
 import {
-  buildTitle,
   getDateString,
   getNumberValue,
   getPlainText,
@@ -213,18 +214,24 @@ export async function updateNotionJob(
   // deno-lint-ignore no-explicit-any
   const properties: Record<string, any> = {
     name: {
-      title: richText(buildTitle(job.name || job.script, job.status, config)),
+      title: richText(job.name || job.script),
     },
     script: { rich_text: richText(job.script) },
     status: { select: job.status ? { name: job.status } : null },
     uid: { rich_text: richText(job.uid) },
   };
 
-  // 1. Update page properties
-  await notion.pages.update({
+  const updatePayload: UpdatePageParameters = {
     page_id: job.notion_page_id,
     properties,
-  });
+    ...(job.status && config.emojis[job.status] && {
+      // deno-lint-ignore no-explicit-any
+      icon: { type: "emoji", emoji: config.emojis[job.status] as any },
+    }),
+  };
+
+  // 1. Update page properties and icon
+  await notion.pages.update(updatePayload);
 
   // 2. Append output as a code block if job is finished and has output
   const terminalStatuses: (JobStatus)[] = [
@@ -268,11 +275,9 @@ export async function createNextNotionInstance(
   const notion = getClient();
   const dbId = databaseId ?? getDatabaseId();
 
-  const title = buildTitle(job.name || job.script, "pending", config);
-
   // deno-lint-ignore no-explicit-any
   const properties: Record<string, any> = {
-    name: { title: richText(title) },
+    name: { title: richText(job.name || job.script) },
     script: { rich_text: richText(job.script) },
     args: { rich_text: richText(job.args.join(" ")) },
     deno_args: { rich_text: richText(job.deno_args.join(" ")) },
@@ -297,21 +302,28 @@ export async function createNextNotionInstance(
     };
   }
 
-  const response = await notion.pages.create({
+  const createPayload: CreatePageParameters = {
     parent: { database_id: dbId },
     properties,
-  });
+    ...(config.emojis["pending"] && {
+      // deno-lint-ignore no-explicit-any
+      icon: { type: "emoji", emoji: config.emojis["pending"] as any },
+    }),
+  };
+
+  const response = await notion.pages.create(createPayload);
 
   const newPageId = response.id;
 
   // Update the original job to point forward
   if (job.notion_page_id) {
-    await notion.pages.update({
+    const forwardUpdatePayload: UpdatePageParameters = {
       page_id: job.notion_page_id,
       properties: {
         next_instance: { relation: [{ id: newPageId }] },
       },
-    });
+    };
+    await notion.pages.update(forwardUpdatePayload);
   }
 
   return newPageId;

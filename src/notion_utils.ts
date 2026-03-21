@@ -6,7 +6,7 @@
  */
 
 import * as log from "@std/log";
-import type { AppConfig, JobStatus } from "./types.ts";
+import type { JobStatus } from "./types.ts";
 import { JOB_STATUSES } from "./types.ts";
 
 // ─── Environment Configuration ──────────────────────────────────────
@@ -137,20 +137,6 @@ export function getRelationId(
 }
 
 // ─── Push Logic Helpers ─────────────────────────────────────────────
-
-/**
- * Build the Notion title with emoji prefix.
- * E.g., "✅ sync.ts" or "⏳ backup.sh"
- */
-export function buildTitle(
-  script: string,
-  status: JobStatus,
-  config: AppConfig,
-): string {
-  if (status === null) return script;
-  const emoji = config.emojis[status] ?? "";
-  return emoji ? `${emoji} ${script}` : script;
-}
 
 /** Build a rich_text array from a plain string. */
 export function richText(

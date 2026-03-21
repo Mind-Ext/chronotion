@@ -5,7 +5,6 @@
 
 import { assert, assertEquals } from "@std/assert";
 import {
-  buildTitle,
   getDateString,
   getNumberValue,
   getPlainText,
@@ -15,7 +14,6 @@ import {
   richText,
   truncateOutput,
 } from "../src/notion_utils.ts";
-import { DEFAULT_CONFIG } from "../src/config.ts";
 
 // ─── Truncation Tests ───────────────────────────────────────────────
 
@@ -123,34 +121,6 @@ Deno.test("getRelationId: extracts first ID", () => {
 });
 
 // ─── Push Logic Tests ───────────────────────────────────────────────
-
-Deno.test("buildTitle: includes emoji if configured", () => {
-  const config = {
-    ...DEFAULT_CONFIG,
-    emojis: {
-      ...DEFAULT_CONFIG.emojis,
-      success: "✅",
-    },
-  };
-  assertEquals(buildTitle("test.ts", "success", config), "✅ test.ts");
-});
-
-Deno.test("buildTitle: no emoji if missing", () => {
-  const config = {
-    ...DEFAULT_CONFIG,
-    emojis: {
-      pending: "",
-      running: "",
-      success: "",
-      failed: "",
-      error: "",
-      disabled: "",
-      skipped: "",
-      missed: "",
-    },
-  };
-  assertEquals(buildTitle("test.ts", "success", config), "test.ts");
-});
 
 Deno.test("richText: builds array", () => {
   assertEquals(richText("Hello"), [{
