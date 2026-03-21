@@ -220,13 +220,6 @@ export async function updateNotionJob(
     uid: { rich_text: richText(job.uid) },
   };
 
-  // Update next_instance if set
-  if (job.next_instance) {
-    properties.next_instance = {
-      relation: [{ id: job.next_instance }],
-    };
-  }
-
   // 1. Update page properties
   await notion.pages.update({
     page_id: job.notion_page_id,
