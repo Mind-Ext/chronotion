@@ -419,6 +419,30 @@ export async function runCycle(
 ): Promise<void> {
   await finalizeOrphanedRunningJobs(config);
 
+  // ── Cleanup (log and queue) ──
+  try {
+    await cleanupLogs(config.history_max_age_days, config.history_max_entries);
+    await withQueueLock(async () => {
+      const queue = await loadQueue();
+      const beforeCount = queue.jobs.length;
+      cleanupQueue(
+        queue,
+        config.history_max_age_days,
+        config.history_max_entries,
+      );
+      if (queue.jobs.length < beforeCount) {
+        await saveQueue(queue);
+        logger.info(
+          `Cleaned up ${beforeCount - queue.jobs.length} old job(s) from queue`,
+        );
+      }
+    });
+  } catch (err) {
+    logger.error(
+      `Cleanup failed - ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   // ── Pull from Notion (error-isolated) ──
   if (!config.local_mode) {
     try {
@@ -573,7 +597,7 @@ async function main(): Promise<void> {
     Deno.exit(1);
   }
 
-  const config = await loadConfig();
+  let config = await loadConfig();
   await setupLogger();
 
   logger.info("Chronotion starting...");
@@ -586,47 +610,28 @@ async function main(): Promise<void> {
   }
   logger.info(`Scripts dir: ${config.scripts_dir}`);
 
-  // Initialize Notion schema if in remote mode
-  if (!config.local_mode) {
-    validateNotionEnvVars();
+  let notionInitialized = false;
+
+  const ensureNotion = async (cfg: AppConfig) => {
+    if (cfg.local_mode || notionInitialized) return;
 
     try {
+      validateNotionEnvVars();
       await initDatabaseSchema();
       logger.info("Notion database schema verified.");
+      notionInitialized = true;
     } catch (err) {
-      logger.error(
-        `Fatal: Notion initialization failed - ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-      Deno.exit(1);
-    }
-  }
-
-  // Crash recovery
-  await finalizeOrphanedRunningJobs(config);
-
-  // Log and Queue cleanup
-  await cleanupLogs(config.history_max_age_days, config.history_max_entries);
-  const performQueueCleanup = async () => {
-    const queue = await loadQueue();
-    const beforeCount = queue.jobs.length;
-    cleanupQueue(
-      queue,
-      config.history_max_age_days,
-      config.history_max_entries,
-    );
-    if (queue.jobs.length < beforeCount) {
-      await saveQueue(queue);
-      logger.info(
-        `Cleaned up ${beforeCount - queue.jobs.length} old job(s) from queue`,
-      );
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      logger.error(`Notion initialization failed - ${errorMsg}`);
+      if (isOneOff) {
+        Deno.exit(1);
+      }
     }
   };
-  await withQueueLock(performQueueCleanup);
 
   if (isOneOff) {
     // Single run
+    await ensureNotion(config);
     await runCycle(config, true);
     logger.info("One-off cycle complete.");
   } else {
@@ -635,6 +640,19 @@ async function main(): Promise<void> {
     logger.info("Orchestrator started (poll mode)");
 
     while (true) {
+      // Reload config to pick up changes (e.g. poll_minutes, local_mode, history limits)
+      try {
+        config = await loadConfig();
+      } catch (err) {
+        logger.warn(
+          `Failed to reload config (might be mid-edit), keeping previous settings: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+
+      await ensureNotion(config);
+
       try {
         await runCycle(config, false);
       } catch (err) {

@@ -84,6 +84,7 @@ export const DEFAULT_CONFIG: AppConfig = {
 /**
  * Load and merge config from a JSONC file.
  * @param configPath Optional path to a specific config file. Defaults to local/config.jsonc
+ * @throws Error if the file exists but contains invalid JSONC.
  */
 export async function loadConfig(
   configPath?: string,
@@ -95,14 +96,27 @@ export async function loadConfig(
 
   try {
     const text = await Deno.readTextFile(targetPath);
-    overrides = parseJsonc(text) as Partial<AppConfig>;
-  } catch (_error) {
-    if (configPath) {
-      console.warn(
-        `Warning: Custom config file not found or invalid at ${configPath}. Using defaults.`,
+    try {
+      overrides = parseJsonc(text) as Partial<AppConfig>;
+    } catch (parseError) {
+      throw new Error(
+        `Invalid JSONC in config file ${targetPath}: ${
+          parseError instanceof Error ? parseError.message : String(parseError)
+        }`,
       );
     }
-    // If it's the default path and not found, we just quietly use DEFAULT_CONFIG.
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) {
+      if (configPath) {
+        console.warn(
+          `Warning: Custom config file not found at ${configPath}. Using defaults.`,
+        );
+      }
+      // Use defaults if default path not found
+    } else {
+      // Re-throw parse errors or other system errors (except NotFound)
+      throw error;
+    }
   }
 
   const merged = { ...DEFAULT_CONFIG, ...overrides };
