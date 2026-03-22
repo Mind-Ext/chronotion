@@ -171,6 +171,7 @@ export async function executeScript(
 
   try {
     const scriptEnv = {
+      NO_COLOR: "1", // Disable ANSI escape codes in subprocess output
       ...(config.env.default || {}),
       ...(config.env[job.script] || {}),
     };
