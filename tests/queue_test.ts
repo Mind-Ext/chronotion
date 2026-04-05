@@ -20,7 +20,8 @@ function makeTestJob(overrides: Partial<JobInstance> = {}): JobInstance {
     script: "test.ts",
     args: [],
     deno_args: [],
-    run_at: "2025-01-01T00:00:00Z",
+    scheduled_at: "2025-01-01T00:00:00Z",
+    finished_at: null,
     next_in: "1d",
     status: "pending",
     end_on: null,
@@ -53,7 +54,7 @@ Deno.test("createJob returns a complete JobInstance", () => {
   const job = createJob({
     script: "test.ts",
     args: [],
-    run_at: "2024-06-01T12:00:00Z",
+    scheduled_at: "2024-06-01T12:00:00Z",
     next_in: "1d",
   });
   assertEquals(job.script, "test.ts");
@@ -68,7 +69,7 @@ Deno.test("findJob and updateJob work correctly", () => {
   const job = createJob({
     script: "test.ts",
     args: [],
-    run_at: "2024-06-01T12:00:00Z",
+    scheduled_at: "2024-06-01T12:00:00Z",
     next_in: "1d",
   });
   addJob(queue, job);

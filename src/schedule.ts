@@ -50,7 +50,7 @@ type ScheduleResult =
   | { ok: true; next: Date }
   | { ok: false; error: string };
 
-/** Compute next run_at from the given anchor date and next_in expression */
+/** Compute next scheduled_at from the given anchor date and next_in expression */
 export function computeNextRun(
   anchor: Date,
   nextIn: string,

@@ -166,7 +166,8 @@ export const REQUIRED_PROPERTIES: Record<string, object> = {
   script: { rich_text: {} },
   args: { rich_text: {} },
   deno_args: { rich_text: {} },
-  run_at: { date: {} },
+  scheduled_at: { date: {} },
+  finished_at: { date: {} },
   next_in: { rich_text: {} },
   end_on: { date: {} },
   status: {

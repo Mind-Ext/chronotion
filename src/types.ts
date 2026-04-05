@@ -27,7 +27,9 @@ export interface JobInstance {
   // Deno-specific permission flags (--allow/deny/unstable only)
   deno_args: string[];
   // ISO-8601 timestamp for when this job should run
-  run_at: string;
+  scheduled_at: string;
+  // ISO-8601 timestamp for when this job finished (set on terminal status)
+  finished_at: string | null;
   // Interval or macro for rescheduling (e.g. "1d", "first monday of month", "never")
   next_in: string;
   // Current execution status

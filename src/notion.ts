@@ -90,6 +90,18 @@ export async function initDatabaseSchema(
     existingProps.add("name");
   }
 
+  // Rename run_at to scheduled_at if it exists with the old name
+  if (existingProps.has("run_at") && !existingProps.has("scheduled_at")) {
+    await notion.databases.update({
+      database_id: dbId,
+      properties: {
+        run_at: { name: "scheduled_at" },
+      },
+    });
+    existingProps.delete("run_at");
+    existingProps.add("scheduled_at");
+  }
+
   // Build update payload for missing properties
   // deno-lint-ignore no-explicit-any
   const toAdd: Record<string, any> = {};
@@ -135,7 +147,9 @@ function pageToJob(page: PageObjectResponse): JobInstance {
   const script = getPlainText(props.script);
   const argsRaw = getPlainText(props.args);
   const denoArgsRaw = getPlainText(props.deno_args);
-  const runAt = getDateString(props.run_at);
+  const scheduledAt = getDateString(props.scheduled_at) ??
+    getDateString(props.run_at);
+  const finishedAt = getDateString(props.finished_at);
   const nextIn = getPlainText(props.next_in);
   const endOn = getDateString(props.end_on);
   const statusRaw = getSelectValue(props.status);
@@ -147,18 +161,19 @@ function pageToJob(page: PageObjectResponse): JobInstance {
   const status = JOB_STATUSES.find((s) => s === statusRaw) ?? null;
 
   return {
-    uid: uid || crypto.randomUUID(), // Prefer Notion-stored UID, fallback to new one if missing
+    uid: uid || crypto.randomUUID(),
     name: name || undefined,
     script,
     args: parseStringArgs(argsRaw),
     deno_args: parseStringArgs(denoArgsRaw),
-    run_at: runAt ?? "",
+    scheduled_at: scheduledAt ?? "",
+    finished_at: finishedAt,
     next_in: nextIn ?? "",
     status: status,
     end_on: endOn,
     prev_instance: prevInstance,
     next_instance: nextInstance,
-    output: "", // Output is now stored as page content; not fetched during bulk pull for performance
+    output: "",
     notion_page_id: page.id,
     timeout_minutes: timeoutMinutes,
     created_at: page.created_time ?? new Date().toISOString(),
@@ -221,6 +236,10 @@ export async function updateNotionJob(
     uid: { rich_text: richText(job.uid) },
   };
 
+  if (job.finished_at) {
+    properties.finished_at = { date: { start: job.finished_at } };
+  }
+
   const updatePayload: UpdatePageParameters = {
     page_id: job.notion_page_id,
     properties,
@@ -281,7 +300,7 @@ export async function createNextNotionInstance(
     script: { rich_text: richText(job.script) },
     args: { rich_text: richText(job.args.join(" ")) },
     deno_args: { rich_text: richText(job.deno_args.join(" ")) },
-    run_at: { date: { start: nextRunAt } },
+    scheduled_at: { date: { start: nextRunAt } },
     next_in: { rich_text: richText(job.next_in) },
     status: { select: { name: "pending" } },
     uid: { rich_text: richText(nextUid) },

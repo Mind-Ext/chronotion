@@ -112,24 +112,25 @@ export function addJob(queue: QueueData, job: JobInstance): void {
 /** Create a new JobInstance with defaults */
 export function createJob(
   params:
-    & Pick<JobInstance, "script" | "args" | "run_at" | "next_in">
+    & Pick<JobInstance, "script" | "args" | "scheduled_at" | "next_in">
     & Partial<JobInstance>,
 ): JobInstance {
   const now = new Date().toISOString();
-  const { script, args, run_at, next_in, ...rest } = params;
+  const { script, args, scheduled_at, next_in, ...rest } = params;
   return {
     uid: rest.uid ?? generateUid(),
     name: rest.name,
     script,
     args,
     deno_args: [],
-    run_at,
+    scheduled_at,
     next_in,
     status: "pending",
     end_on: null,
     prev_instance: null,
     next_instance: null,
     output: "",
+    finished_at: null,
     timeout_minutes: null,
     created_at: now,
     ...rest,
@@ -237,9 +238,9 @@ export function cleanupQueue(
 
   if (terminalJobs.length === 0) return;
 
-  // Sort oldest first based on run_at
+  // Sort oldest first based on scheduled_at
   terminalJobs.sort((a, b) =>
-    new Date(a.run_at).getTime() - new Date(b.run_at).getTime()
+    new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
   );
 
   const toDelete = new Set<string>();
@@ -249,7 +250,7 @@ export function cleanupQueue(
   if (maxAgeDays > 0) {
     const cutoff = now - maxAgeDays * 24 * 60 * 60 * 1000;
     for (const job of terminalJobs) {
-      if (new Date(job.run_at).getTime() < cutoff) {
+      if (new Date(job.scheduled_at).getTime() < cutoff) {
         toDelete.add(job.uid);
       }
     }

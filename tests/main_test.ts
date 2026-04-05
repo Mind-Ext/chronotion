@@ -8,7 +8,8 @@ function makeJob(overrides: Partial<JobInstance> = {}): JobInstance {
     script: "dummy.ts",
     args: [],
     deno_args: [],
-    run_at: new Date(Date.now() - 60000).toISOString(), // 1 min ago
+    scheduled_at: new Date(Date.now() - 60000).toISOString(), // 1 min ago
+    finished_at: null,
     next_in: "1d",
     status: "pending",
     end_on: null,
@@ -91,7 +92,7 @@ Deno.test("findDueJobs finds overdue pending jobs", () => {
       makeJob({
         uid: "future",
         status: "pending",
-        run_at: "2099-01-01T00:00:00Z",
+        scheduled_at: "2099-01-01T00:00:00Z",
       }),
       makeJob({ uid: "done", status: "success" }),
       makeJob({ uid: "disabled", status: "disabled" }),
@@ -110,7 +111,7 @@ Deno.test("findDueJobs returns empty for no due jobs", () => {
       makeJob({
         uid: "future",
         status: "pending",
-        run_at: "2099-01-01T00:00:00Z",
+        scheduled_at: "2099-01-01T00:00:00Z",
       }),
     ],
     last_updated: "",

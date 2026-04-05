@@ -67,7 +67,8 @@ Deno.test({
     const expectedProps = [
       "args",
       "deno_args",
-      "run_at",
+      "scheduled_at",
+      "finished_at",
       "next_in",
       "end_on",
       "status",
@@ -116,7 +117,7 @@ Deno.test({
             { type: "text" as const, text: { content: '["--verbose"]' } },
           ],
         },
-        run_at: { date: { start: "2025-01-15T10:00:00.000Z" } },
+        scheduled_at: { date: { start: "2025-01-15T10:00:00.000Z" } },
         next_in: {
           rich_text: [{ type: "text" as const, text: { content: "1d" } }],
         },
@@ -186,7 +187,7 @@ Deno.test({
         args: {
           rich_text: [{ type: "text" as const, text: { content: "[]" } }],
         },
-        run_at: { date: { start: "2025-03-01T08:00:00.000Z" } },
+        scheduled_at: { date: { start: "2025-03-01T08:00:00.000Z" } },
         next_in: {
           rich_text: [{ type: "text" as const, text: { content: "1w" } }],
         },
@@ -199,7 +200,8 @@ Deno.test({
       script: "recurring.ts",
       args: [],
       deno_args: [],
-      run_at: "2025-03-01T08:00:00.000Z",
+      scheduled_at: "2025-03-01T08:00:00.000Z",
+      finished_at: null,
       next_in: "1w",
       status: "success",
       end_on: null,
@@ -228,7 +230,7 @@ Deno.test({
     const nextJob = jobs.find((j) => j.notion_page_id === nextPageId);
     assertExists(nextJob, "Next instance not found in database");
     assertEquals(nextJob.status, "pending");
-    assertEquals(nextJob.run_at, "2025-03-08T08:00:00.000Z");
+    assertEquals(nextJob.scheduled_at, "2025-03-08T08:00:00.000Z");
 
     // Verify prev_instance is linked
     assertEquals(nextJob.prev_instance, origPage.id);
@@ -268,7 +270,7 @@ Deno.test({
             { type: "text" as const, text: { content: "date_test.ts" } },
           ],
         },
-        run_at: { date: { start: "2025-06-15T14:30:00.000Z" } },
+        scheduled_at: { date: { start: "2025-06-15T14:30:00.000Z" } },
         end_on: { date: { start: "2025-12-31T23:59:00.000Z" } },
         next_in: {
           rich_text: [{ type: "text" as const, text: { content: "1m" } }],
@@ -282,14 +284,14 @@ Deno.test({
     assertExists(job);
 
     // Verify dates are preserved as ISO strings
-    assertEquals(job.run_at, "2025-06-15T14:30:00.000Z");
+    assertEquals(job.scheduled_at, "2025-06-15T14:30:00.000Z");
     assertEquals(job.end_on, "2025-12-31T23:59:00.000Z");
 
     // Verify Date objects can be created from the strings
-    const runAt = new Date(job.run_at);
-    assertEquals(runAt.getUTCFullYear(), 2025);
-    assertEquals(runAt.getUTCMonth(), 5); // June = 5 (0-indexed)
-    assertEquals(runAt.getUTCDate(), 15);
+    const scheduledAt = new Date(job.scheduled_at);
+    assertEquals(scheduledAt.getUTCFullYear(), 2025);
+    assertEquals(scheduledAt.getUTCMonth(), 5); // June = 5 (0-indexed)
+    assertEquals(scheduledAt.getUTCDate(), 15);
 
     await cleanupTestPages(dbId);
   },

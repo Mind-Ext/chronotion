@@ -45,10 +45,12 @@ export function markOrphanedRunningJobsAsError(
   tasks: ReadonlyMap<string, Promise<void>> = activeTasks,
 ): JobInstance[] {
   const recovered: JobInstance[] = [];
+  const finishedAt = new Date().toISOString();
   for (const job of queue.jobs) {
     if (job.status === "running" && !tasks.has(job.uid)) {
       job.status = "error";
       job.output = "Orchestrator interrupted: job was left in running state";
+      job.finished_at = finishedAt;
       recovered.push({ ...job });
     }
   }
@@ -102,8 +104,8 @@ export function findDueJobs(queue: QueueData): JobInstance[] {
   return queue.jobs.filter((job) => {
     if (job.status !== "pending") return false;
     if (activeTasks.has(job.uid)) return false;
-    const runAt = new Date(job.run_at).getTime();
-    return runAt <= now;
+    const scheduledAt = new Date(job.scheduled_at).getTime();
+    return scheduledAt <= now;
   });
 }
 
@@ -145,8 +147,8 @@ async function validateNewJobs(
         let errorMsg = null;
         if (!rJob.script || rJob.script.trim() === "") {
           errorMsg = "Validation failed: Missing script name.";
-        } else if (!rJob.run_at || rJob.run_at.trim() === "") {
-          errorMsg = "Validation failed: Missing run_at (start time).";
+        } else if (!rJob.scheduled_at || rJob.scheduled_at.trim() === "") {
+          errorMsg = "Validation failed: Missing scheduled_at (start time).";
         } else {
           const validationError = validateNextIn(rJob.next_in);
           if (validationError) {
@@ -243,6 +245,7 @@ async function executeJob(
 
     // Update status
     const newStatus = result.success ? "success" : "failed";
+    const finishedAt = new Date().toISOString();
 
     let updatedJob: JobInstance | undefined;
     const processExecutionResult = async () => {
@@ -250,6 +253,7 @@ async function executeJob(
       updateJob(queue, job.uid, {
         status: newStatus,
         output: result.output,
+        finished_at: finishedAt,
       });
       // Reschedule
       await scheduleNext(job, queue, config);
@@ -262,7 +266,12 @@ async function executeJob(
     if (!config.local_mode && updatedJob) {
       try {
         await updateNotionJob(
-          { ...updatedJob, status: newStatus, output: result.output },
+          {
+            ...updatedJob,
+            status: newStatus,
+            output: result.output,
+            finished_at: finishedAt,
+          },
           config,
         );
       } catch (err) {
@@ -287,12 +296,14 @@ async function executeJob(
 
     // Safely attempt to set job to error state
     try {
+      const finishedAt = new Date().toISOString();
       let errorJob: JobInstance | undefined;
       const markJobAsErrorState = async () => {
         const queue = await loadQueue();
         updateJob(queue, job.uid, {
           status: "error",
           output: `Orchestrator Error: ${errorMsg}`,
+          finished_at: finishedAt,
         });
         // Reschedule to ensure recurring jobs continue
         await scheduleNext(job, queue, config);
@@ -324,7 +335,7 @@ async function scheduleNext(
   queue: QueueData,
   config: AppConfig,
 ): Promise<void> {
-  let anchor = new Date(job.run_at);
+  let anchor = new Date(job.scheduled_at);
   let result = computeNextRun(anchor, job.next_in);
 
   if (!result.ok) {
@@ -376,7 +387,7 @@ async function scheduleNext(
     script: job.script,
     args: [...job.args],
     deno_args: [...job.deno_args],
-    run_at: nextRunAt,
+    scheduled_at: nextRunAt,
     next_in: job.next_in,
     prev_instance: job.uid,
     timeout_minutes: job.timeout_minutes,
@@ -388,7 +399,7 @@ async function scheduleNext(
   addJob(queue, nextJob);
 
   logger.info(
-    `[${nextJob.uid}] ${job.script}: scheduled for ${nextJob.run_at}`,
+    `[${nextJob.uid}] ${job.script}: scheduled for ${nextJob.scheduled_at}`,
   );
 
   // 2. Best-effort Notion creation (Self-healing will fix on failure)
@@ -527,8 +538,8 @@ async function claimDueJobs(config: AppConfig): Promise<JobInstance[]> {
     const now = new Date();
 
     for (const job of allDueJobs) {
-      const runAt = new Date(job.run_at);
-      const ageMinutes = (now.getTime() - runAt.getTime()) / 60000;
+      const scheduledAt = new Date(job.scheduled_at);
+      const ageMinutes = (now.getTime() - scheduledAt.getTime()) / 60000;
 
       if (config.lookback_minutes > 0 && ageMinutes > config.lookback_minutes) {
         logger.warn(
@@ -536,12 +547,19 @@ async function claimDueJobs(config: AppConfig): Promise<JobInstance[]> {
             Math.round(ageMinutes)
           }m > ${config.lookback_minutes}m)`,
         );
-        updateJob(queue, job.uid, { status: "missed" });
+        const finishedAt = now.toISOString();
+        updateJob(queue, job.uid, {
+          status: "missed",
+          finished_at: finishedAt,
+        });
         await scheduleNext(job, queue, config);
 
         // Push status to Notion if needed
         if (!config.local_mode && job.notion_page_id) {
-          updateNotionJob({ ...job, status: "missed" }, config)
+          updateNotionJob(
+            { ...job, status: "missed", finished_at: finishedAt },
+            config,
+          )
             .catch((e: unknown) =>
               console.error("Failed to update missed status to Notion", e)
             );
