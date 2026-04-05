@@ -2,6 +2,14 @@
 
 ⏳ A lightweight task scheduler for executing local scripts using Notion database as remote UI. Intended for infrequent jobs. No more cron expressions. Only intuitive control. 
 
+
+| Calendar view | Table view |
+| --- | --- |
+| <img height="141" alt="image" src="https://github.com/user-attachments/assets/8aa46bae-3743-4f5c-ad01-838e1614573a" /> | <img height="165" alt="image" src="https://github.com/user-attachments/assets/b3f91802-146a-4a6b-91ba-1b54fbc74a2e" /> |
+
+<!-- 1223 299 -->
+<!-- width="816" height="257" -->
+
 ### Getting started
 
 1. **Deno**: Install [Deno](https://deno.com/) runtime.
@@ -42,7 +50,7 @@
    - **name**: human-friendly name for the job. Title of Notion page.
 
    **Managed fields**: (updated by the orchestrator)
-   - **name**: updated with status emoji prefix.
+   - **icon**: updated with status emoji.
    - **status**: updated to `pending`, `running`, `success`, `failed`, etc.
    - **uid**: auto-generated unique identifier for the job instance.
    - **prev_instance** / **next_instance**: relations linking recurring jobs.
