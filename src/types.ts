@@ -84,6 +84,6 @@ export interface QueueData {
 /** Result of a merge operation */
 export interface MergeResult {
   queue: QueueData;
-  // Jobs that have fresher local state and should be pushed back to Notion
+  // Jobs that need to be pushed back to Notion (fresher local state or icon sync needed)
   staleRemote: JobInstance[];
 }

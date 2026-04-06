@@ -196,7 +196,13 @@ export function mergeWithNotion(
       } else {
         // Local is pending/error/disabled/skipped — remote is authoritative
         // Preserve local uid for stability
-        mergedJobs.push({ ...remoteJob, uid: localJob.uid });
+        const mergedJob = { ...remoteJob, uid: localJob.uid };
+        mergedJobs.push(mergedJob);
+
+        // If status changed, we need to sync the icon in Notion
+        if (localJob.status !== remoteJob.status) {
+          staleRemote.push(mergedJob);
+        }
       }
     } else {
       // New remote job not seen locally
