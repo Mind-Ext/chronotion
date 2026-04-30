@@ -3,6 +3,7 @@ import {
   buildCommand,
   buildSubprocessEnv,
   detectRuntimeCommand,
+  parseShebangRuntime,
   sanitizeDenoArgs,
   validateScriptPath,
 } from "../src/executor.ts";
@@ -11,35 +12,50 @@ import { DEFAULT_CONFIG } from "../src/config.ts";
 
 // --- Runtime detection ---
 
-Deno.test("detectRuntimeCommand: typescript", () => {
-  assertEquals(detectRuntimeCommand("sync.ts", DEFAULT_CONFIG.runtimes), [
-    "deno",
-    "run",
-  ]);
+Deno.test("detectRuntimeCommand: typescript", async () => {
+  assertEquals(
+    await detectRuntimeCommand("/scripts/sync.ts", DEFAULT_CONFIG.runtimes),
+    ["deno", "run"],
+  );
 });
 
-Deno.test("detectRuntimeCommand: javascript", () => {
-  assertEquals(detectRuntimeCommand("sync.js", DEFAULT_CONFIG.runtimes), [
-    "deno",
-    "run",
-  ]);
+Deno.test("detectRuntimeCommand: javascript", async () => {
+  assertEquals(
+    await detectRuntimeCommand("/scripts/sync.js", DEFAULT_CONFIG.runtimes),
+    ["deno", "run"],
+  );
 });
 
-Deno.test("detectRuntimeCommand: python", () => {
-  assertEquals(detectRuntimeCommand("clean.py", DEFAULT_CONFIG.runtimes), [
-    "uv",
-    "run",
-  ]);
+Deno.test("detectRuntimeCommand: python", async () => {
+  assertEquals(
+    await detectRuntimeCommand("/scripts/clean.py", DEFAULT_CONFIG.runtimes),
+    ["uv", "run"],
+  );
 });
 
-Deno.test("detectRuntimeCommand: bash", () => {
-  assertEquals(detectRuntimeCommand("backup.sh", DEFAULT_CONFIG.runtimes), [
-    "bash",
-  ]);
+Deno.test("detectRuntimeCommand: bash", async () => {
+  assertEquals(
+    await detectRuntimeCommand("/scripts/backup.sh", DEFAULT_CONFIG.runtimes),
+    ["bash"],
+  );
 });
 
-Deno.test("detectRuntimeCommand: unknown", () => {
-  assertEquals(detectRuntimeCommand("file.xyz", DEFAULT_CONFIG.runtimes), null);
+Deno.test("detectRuntimeCommand: unknown", async () => {
+  assertEquals(
+    await detectRuntimeCommand("/scripts/file.xyz", DEFAULT_CONFIG.runtimes),
+    null,
+  );
+});
+
+Deno.test("detectRuntimeCommand: picks up shebang from real file", async () => {
+  const tmp = await writeTemp("#!/usr/bin/env bun\nconsole.log('hi');\n");
+  try {
+    assertEquals(await detectRuntimeCommand(tmp, DEFAULT_CONFIG.runtimes), [
+      "bun",
+    ]);
+  } finally {
+    await Deno.remove(tmp);
+  }
 });
 
 // --- Path jail ---
@@ -195,4 +211,142 @@ Deno.test("buildCommand: bash with args", () => {
   const job = makeJob({ script: "backup.sh", args: ["/data"] });
   const cmd = buildCommand(job, "/scripts/backup.sh", ["bash"]);
   assertEquals(cmd, ["bash", "/scripts/backup.sh", "/data"]);
+});
+
+// --- Shebang parsing ---
+
+async function writeTemp(contents: string): Promise<string> {
+  const tmp = await Deno.makeTempFile({ prefix: "chronotion_test_" });
+  await Deno.writeTextFile(tmp, contents);
+  return tmp;
+}
+
+Deno.test("parseShebangRuntime: /bin/bash", async () => {
+  const tmp = await writeTemp("#!/bin/bash\necho hello\n");
+  try {
+    assertEquals(await parseShebangRuntime(tmp), ["/bin/bash"]);
+  } finally {
+    await Deno.remove(tmp);
+  }
+});
+
+Deno.test("parseShebangRuntime: /usr/bin/env deno", async () => {
+  const tmp = await writeTemp("#!/usr/bin/env deno\nconsole.log('hi');\n");
+  try {
+    assertEquals(await parseShebangRuntime(tmp), ["deno"]);
+  } finally {
+    await Deno.remove(tmp);
+  }
+});
+
+Deno.test("parseShebangRuntime: /usr/bin/env bun", async () => {
+  const tmp = await writeTemp("#!/usr/bin/env bun\nconsole.log('hi');\n");
+  try {
+    assertEquals(await parseShebangRuntime(tmp), ["bun"]);
+  } finally {
+    await Deno.remove(tmp);
+  }
+});
+
+Deno.test("parseShebangRuntime: /usr/bin/env python3", async () => {
+  const tmp = await writeTemp("#!/usr/bin/env python3\nprint('hi')\n");
+  try {
+    assertEquals(await parseShebangRuntime(tmp), ["python3"]);
+  } finally {
+    await Deno.remove(tmp);
+  }
+});
+
+Deno.test("parseShebangRuntime: /bin/sh", async () => {
+  const tmp = await writeTemp("#!/bin/sh\necho hi\n");
+  try {
+    assertEquals(await parseShebangRuntime(tmp), ["/bin/sh"]);
+  } finally {
+    await Deno.remove(tmp);
+  }
+});
+
+Deno.test("parseShebangRuntime: /usr/bin/env node", async () => {
+  const tmp = await writeTemp("#!/usr/bin/env node\nconsole.log('hi');\n");
+  try {
+    assertEquals(await parseShebangRuntime(tmp), ["node"]);
+  } finally {
+    await Deno.remove(tmp);
+  }
+});
+
+Deno.test("parseShebangRuntime: no shebang returns null", async () => {
+  const tmp = await writeTemp("echo hello\n");
+  try {
+    assertEquals(await parseShebangRuntime(tmp), null);
+  } finally {
+    await Deno.remove(tmp);
+  }
+});
+
+Deno.test("parseShebangRuntime: file not found returns null", async () => {
+  assertEquals(
+    await parseShebangRuntime("/nonexistent/path_12345_test"),
+    null,
+  );
+});
+
+Deno.test("parseShebangRuntime: shebang with argument", async () => {
+  const tmp = await writeTemp("#!/bin/bash -e\necho hi\n");
+  try {
+    assertEquals(await parseShebangRuntime(tmp), ["/bin/bash", "-e"]);
+  } finally {
+    await Deno.remove(tmp);
+  }
+});
+
+Deno.test("parseShebangRuntime: env with no argument returns null", async () => {
+  const tmp = await writeTemp("#!/usr/bin/env\n");
+  try {
+    assertEquals(await parseShebangRuntime(tmp), null);
+  } finally {
+    await Deno.remove(tmp);
+  }
+});
+
+Deno.test("parseShebangRuntime: env -S forwards full command after -S", async () => {
+  const tmp = await writeTemp(
+    "#!/usr/bin/env -S deno run --allow-env\nconsole.log('hi');\n",
+  );
+  try {
+    assertEquals(await parseShebangRuntime(tmp), [
+      "deno",
+      "run",
+      "--allow-env",
+    ]);
+  } finally {
+    await Deno.remove(tmp);
+  }
+});
+
+Deno.test("parseShebangRuntime: env -S with no command returns null", async () => {
+  const tmp = await writeTemp("#!/usr/bin/env -S\n");
+  try {
+    assertEquals(await parseShebangRuntime(tmp), null);
+  } finally {
+    await Deno.remove(tmp);
+  }
+});
+
+Deno.test("parseShebangRuntime: empty shebang returns null", async () => {
+  const tmp = await writeTemp("#!\necho hi\n");
+  try {
+    assertEquals(await parseShebangRuntime(tmp), null);
+  } finally {
+    await Deno.remove(tmp);
+  }
+});
+
+Deno.test("parseShebangRuntime: env with deno for full path", async () => {
+  const tmp = await writeTemp("#!/usr/bin/env deno\nconsole.log('hi');\n");
+  try {
+    assertEquals(await parseShebangRuntime(tmp), ["deno"]);
+  } finally {
+    await Deno.remove(tmp);
+  }
 });

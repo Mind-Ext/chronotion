@@ -23,12 +23,55 @@ const WINDOWS_FORWARDED_ENV_KEYS = [
   "USERPROFILE",
 ];
 
-/** Detect runtime command from file extension */
-export function detectRuntimeCommand(
-  script: string,
+/**
+ * Parse the shebang line from a script file to detect its declared runtime.
+ * Returns a command array, or null if no shebang.
+ *
+ * Handles:
+ *   #!/bin/bash          → ["/bin/bash"]
+ *   #!/usr/bin/env bun   → ["bun"]
+ *   #!/bin/bash -e       → ["/bin/bash", "-e"]
+ */
+export async function parseShebangRuntime(
+  scriptPath: string,
+): Promise<string[] | null> {
+  try {
+    const text = await Deno.readTextFile(scriptPath);
+    const firstLine = text.split("\n")[0]?.trim();
+    if (!firstLine?.startsWith("#!")) return null;
+
+    const shebang = firstLine.slice(2).trim();
+    if (!shebang) return null;
+
+    const [interpreter, ...rest] = shebang.split(/\s+/);
+    if (!interpreter) return null;
+
+    // /usr/bin/env → real command is in rest
+    if (interpreter.endsWith("/env") || interpreter === "env") {
+      if (rest.length === 0) return null;
+      // -S: remainder is the full command: #!/usr/bin/env -S deno run --allow-env
+      if (rest[0] === "-S") {
+        return rest.slice(1).length > 0 ? rest.slice(1) : null;
+      }
+      return rest;
+    }
+
+    // Direct interpreter path
+    return [interpreter, ...rest];
+  } catch {
+    return null;
+  }
+}
+
+/** Detect runtime command from shebang then extension */
+export async function detectRuntimeCommand(
+  scriptPath: string,
   runtimes: Record<string, string[]>,
-): string[] | null {
-  const ext = path.extname(script).toLowerCase().replace(/^\./, "");
+): Promise<string[] | null> {
+  const shebang = await parseShebangRuntime(scriptPath);
+  if (shebang) return shebang;
+
+  const ext = path.extname(scriptPath).toLowerCase().replace(/^\./, "");
   return runtimes[ext] || null;
 }
 
@@ -148,8 +191,11 @@ export async function executeScript(
     };
   }
 
-  // Detect runtime
-  const baseCmd = detectRuntimeCommand(job.script, config.runtimes);
+  // Detect runtime (shebang → extension fallback)
+  const baseCmd = await detectRuntimeCommand(
+    pathResult.resolved,
+    config.runtimes,
+  );
   if (!baseCmd) {
     return {
       success: false,
