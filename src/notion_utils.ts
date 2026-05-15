@@ -175,6 +175,7 @@ export const REQUIRED_PROPERTIES: Record<string, object> = {
       options: JOB_STATUSES.map((s) => ({ name: s, color: STATUS_COLORS[s] })),
     },
   },
+  worker_id: { select: {} },
   uid: { rich_text: {} },
   prev_instance: { relation: { database_id: "SELF", single_property: {} } },
   next_instance: { relation: { database_id: "SELF", single_property: {} } },

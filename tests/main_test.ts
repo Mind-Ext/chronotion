@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { findDueJobs, markOrphanedRunningJobsAsError } from "../src/main.ts";
 import type { JobInstance, QueueData } from "../src/types.ts";
+import { DEFAULT_CONFIG } from "../src/config.ts";
 
 function makeJob(overrides: Partial<JobInstance> = {}): JobInstance {
   return {
@@ -85,38 +86,56 @@ Deno.test("markOrphanedRunningJobsAsError ignores running jobs with active tasks
   assertEquals(queue.jobs[0].status, "running");
 });
 
-Deno.test("findDueJobs finds overdue pending jobs", () => {
+Deno.test("findDueJobs finds overdue pending jobs with matching worker_id", () => {
+  const config = { ...DEFAULT_CONFIG, worker_id: "my-worker" };
   const queue: QueueData = {
     jobs: [
-      makeJob({ uid: "due", status: "pending" }),
+      makeJob({ uid: "due", status: "pending", worker_id: "my-worker" }),
+      makeJob({
+        uid: "wrong-worker",
+        status: "pending",
+        worker_id: "other",
+      }),
+      makeJob({ uid: "unassigned", status: "pending" }), // Strict assignment: should be ignored
       makeJob({
         uid: "future",
         status: "pending",
         scheduled_at: "2099-01-01T00:00:00Z",
+        worker_id: "my-worker",
       }),
-      makeJob({ uid: "done", status: "success" }),
-      makeJob({ uid: "disabled", status: "disabled" }),
+      makeJob({
+        uid: "done",
+        status: "success",
+        worker_id: "my-worker",
+      }),
+      makeJob({
+        uid: "disabled",
+        status: "disabled",
+        worker_id: "my-worker",
+      }),
     ],
     last_updated: "",
   };
 
-  const due = findDueJobs(queue);
+  const due = findDueJobs(queue, config);
   assertEquals(due.length, 1);
   assertEquals(due[0].uid, "due");
 });
 
 Deno.test("findDueJobs returns empty for no due jobs", () => {
+  const config = { ...DEFAULT_CONFIG, worker_id: "my-worker" };
   const queue: QueueData = {
     jobs: [
       makeJob({
         uid: "future",
         status: "pending",
         scheduled_at: "2099-01-01T00:00:00Z",
+        worker_id: "my-worker",
       }),
     ],
     last_updated: "",
   };
 
-  const due = findDueJobs(queue);
+  const due = findDueJobs(queue, config);
   assertEquals(due.length, 0);
 });

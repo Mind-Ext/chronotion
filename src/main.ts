@@ -99,11 +99,19 @@ async function finalizeOrphanedRunningJobs(config: AppConfig): Promise<void> {
 }
 
 /** Find all jobs that are due for execution */
-export function findDueJobs(queue: QueueData): JobInstance[] {
+export function findDueJobs(
+  queue: QueueData,
+  config: AppConfig,
+): JobInstance[] {
   const now = Date.now();
   return queue.jobs.filter((job) => {
     if (job.status !== "pending") return false;
     if (activeTasks.has(job.uid)) return false;
+
+    // Strict instance assignment: ignore jobs assigned to other instances
+    // or unassigned jobs (as per requirement).
+    if (job.worker_id !== config.worker_id) return false;
+
     const scheduledAt = new Date(job.scheduled_at).getTime();
     return scheduledAt <= now;
   });
@@ -390,6 +398,7 @@ async function scheduleNext(
     scheduled_at: nextRunAt,
     next_in: job.next_in,
     prev_instance: job.uid,
+    worker_id: job.worker_id, // Carry over instance assignment
     timeout_minutes: job.timeout_minutes,
     end_on: job.end_on,
   });
@@ -531,7 +540,7 @@ async function claimDueJobs(config: AppConfig): Promise<JobInstance[]> {
 
   const processQueue = async () => {
     const queue = await loadQueue();
-    const allDueJobs = findDueJobs(queue);
+    const allDueJobs = findDueJobs(queue, config);
 
     if (allDueJobs.length === 0) return;
 
@@ -619,6 +628,7 @@ async function main(): Promise<void> {
   await setupLogger();
 
   logger.info("Chronotion starting...");
+  logger.info(`Worker ID: ${config.worker_id}`);
   logger.info(
     `Data source: ${config.local_mode ? "local" : "notion"}`,
   );

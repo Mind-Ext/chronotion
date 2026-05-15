@@ -154,6 +154,7 @@ function pageToJob(page: PageObjectResponse): JobInstance {
   const endOn = getDateString(props.end_on);
   const statusRaw = getSelectValue(props.status);
   const uid = getPlainText(props.uid);
+  const workerId = getSelectValue(props.worker_id);
   const prevInstance = getRelationId(props.prev_instance);
   const nextInstance = getRelationId(props.next_instance);
   const timeoutMinutes = getNumberValue(props.timeout_minutes);
@@ -175,6 +176,7 @@ function pageToJob(page: PageObjectResponse): JobInstance {
     next_instance: nextInstance,
     output: "",
     notion_page_id: page.id,
+    worker_id: workerId || undefined,
     timeout_minutes: timeoutMinutes,
     created_at: page.created_time ?? new Date().toISOString(),
   };
@@ -233,6 +235,7 @@ export async function updateNotionJob(
     },
     script: { rich_text: richText(job.script) },
     status: { select: job.status ? { name: job.status } : null },
+    worker_id: { select: job.worker_id ? { name: job.worker_id } : null },
     uid: { rich_text: richText(job.uid) },
   };
 
@@ -303,6 +306,7 @@ export async function createNextNotionInstance(
     scheduled_at: { date: { start: nextRunAt } },
     next_in: { rich_text: richText(job.next_in) },
     status: { select: { name: "pending" } },
+    worker_id: { select: job.worker_id ? { name: job.worker_id } : null },
     uid: { rich_text: richText(nextUid) },
   };
 

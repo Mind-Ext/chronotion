@@ -44,6 +44,8 @@ export interface JobInstance {
   output: string;
   // Notion page ID for remote sync (undefined in local-only mode)
   notion_page_id?: string;
+  // Worker ID assigned to this job
+  worker_id?: string;
   // Optional timeout in minutes
   timeout_minutes: number | null;
   // ISO-8601 timestamp of when this instance was created
@@ -53,6 +55,8 @@ export interface JobInstance {
 export interface AppConfig {
   // If true, Notion sync is disabled
   local_mode: boolean;
+  // Unique ID for this worker (defaults to Deno.hostname())
+  worker_id: string;
   // Minutes between each poll loop (minimum 1)
   poll_minutes: number;
   // Base directory for scripts (resolved to absolute)

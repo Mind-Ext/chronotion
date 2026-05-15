@@ -16,6 +16,9 @@ export const DEFAULT_CONFIG: AppConfig = {
   // Run without Notion sync, using only local queue.json
   local_mode: false,
 
+  // Unique ID for this worker (defaults to Deno.hostname())
+  worker_id: Deno.hostname(),
+
   // Minutes between each poll/execute cycle (minimum 1)
   poll_minutes: 15,
 
