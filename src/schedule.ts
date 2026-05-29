@@ -17,6 +17,16 @@ const DAY_NAMES = [
   "saturday",
 ] as const;
 
+const SHORT_DAY_NAMES = [
+  "sun",
+  "mon",
+  "tue",
+  "wed",
+  "thu",
+  "fri",
+  "sat",
+] as const;
+
 const MONTH_NAMES = [
   "january",
   "february",
@@ -69,6 +79,13 @@ export function computeNextRun(
   const macroResult = parseMacro(expr, anchor);
   if (macroResult) return macroResult;
 
+  // Try weekday list format: "mon,wed,fri"
+  const weekdayList = parseWeekdayList(expr);
+  if (weekdayList && weekdayList.length > 0) {
+    const next = computeNextWeekday(anchor, weekdayList);
+    return { ok: true, next };
+  }
+
   return { ok: false, error: `Invalid next_in expression: "${nextIn}"` };
 }
 
@@ -109,6 +126,11 @@ export function validateNextIn(nextIn: string): string | null {
     ) {
       return `Invalid period: "${periodStr}"`;
     }
+    return null;
+  }
+
+  // Check weekday list
+  if (parseWeekdayList(expr) !== null) {
     return null;
   }
 
@@ -318,4 +340,50 @@ function dateMatchesSpec(
     date.getDate() === expected.getDate() &&
     date.getMonth() === expected.getMonth()
   );
+}
+
+function parseWeekdayList(expr: string): number[] | null {
+  if (/^(?:week|work)days?$/.test(expr)) {
+    return [1, 2, 3, 4, 5];
+  }
+
+  if (!/^[a-z]+(?:\s*,\s*[a-z]+)*$/.test(expr)) {
+    return null;
+  }
+
+  const parts = expr.split(",").map((s) => s.trim());
+  const dayIndices: number[] = [];
+
+  for (const part of parts) {
+    const longIndex = DAY_NAMES.indexOf(part as typeof DAY_NAMES[number]);
+    if (longIndex !== -1) {
+      dayIndices.push(longIndex);
+      continue;
+    }
+    const shortIndex = SHORT_DAY_NAMES.indexOf(
+      part as typeof SHORT_DAY_NAMES[number],
+    );
+    if (shortIndex !== -1) {
+      dayIndices.push(shortIndex);
+      continue;
+    }
+    return null; // Invalid day name
+  }
+
+  return Array.from(new Set(dayIndices)).sort((a, b) => a - b);
+}
+
+function computeNextWeekday(anchor: Date, dayIndices: number[]): Date {
+  const currentDay = anchor.getDay();
+  let daysToAdd = 1;
+  for (; daysToAdd <= 7; daysToAdd++) {
+    const target = (currentDay + daysToAdd) % 7;
+    if (dayIndices.includes(target)) {
+      break;
+    }
+  }
+
+  const next = new Date(anchor);
+  next.setDate(next.getDate() + daysToAdd);
+  return next;
 }

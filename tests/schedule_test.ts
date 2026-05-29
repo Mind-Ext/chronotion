@@ -152,3 +152,86 @@ Deno.test("dateMatchesMacro: non-macro returns true", () => {
   const date = new Date("2024-06-04T10:00:00Z");
   assertEquals(dateMatchesMacro(date, "1d"), true);
 });
+
+// --- Weekday list tests ---
+
+Deno.test("weekday list: mon,wed", () => {
+  const anchor = new Date("2024-06-17T10:00:00Z"); // Monday
+  const result = computeNextRun(anchor, "mon,wed");
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.next.toISOString(), "2024-06-19T10:00:00.000Z"); // Wednesday
+  }
+});
+
+Deno.test("weekday list: wednesday, friday (from Wednesday)", () => {
+  const anchor = new Date("2024-06-19T10:00:00Z"); // Wednesday
+  const result = computeNextRun(anchor, "wednesday, friday");
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.next.toISOString(), "2024-06-21T10:00:00.000Z"); // Friday
+  }
+});
+
+Deno.test("weekday list: single weekday (monday from monday)", () => {
+  const anchor = new Date("2024-06-17T10:00:00Z"); // Monday
+  const result = computeNextRun(anchor, "mon");
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.next.toISOString(), "2024-06-24T10:00:00.000Z"); // Next Monday
+  }
+});
+
+Deno.test("weekday list: mixed casing and whitespace", () => {
+  const anchor = new Date("2024-06-17T10:00:00Z"); // Monday
+  const result = computeNextRun(anchor, "  tue ,  Fri  ");
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.next.toISOString(), "2024-06-18T10:00:00.000Z"); // Tuesday
+  }
+});
+
+Deno.test("validateNextIn: valid weekday lists", () => {
+  assertEquals(validateNextIn("mon,wed,fri"), null);
+  assertEquals(validateNextIn("monday, wednesday"), null);
+  assertEquals(validateNextIn("tue"), null);
+  assertEquals(validateNextIn("  sunday  "), null);
+});
+
+Deno.test("validateNextIn: invalid weekday lists", () => {
+  assertEquals(typeof validateNextIn("mon,invalid"), "string");
+  assertEquals(typeof validateNextIn("mon, wed, 123"), "string");
+});
+
+Deno.test("weekday list: weekday/workday aliases", () => {
+  // Friday
+  const anchorFri = new Date("2024-06-21T10:00:00Z");
+  const resultFri = computeNextRun(anchorFri, "weekday");
+  assertEquals(resultFri.ok, true);
+  if (resultFri.ok) {
+    assertEquals(resultFri.next.toISOString(), "2024-06-24T10:00:00.000Z"); // Next Monday
+  }
+
+  // Saturday
+  const anchorSat = new Date("2024-06-22T10:00:00Z");
+  const resultSat = computeNextRun(anchorSat, "weekdays");
+  assertEquals(resultSat.ok, true);
+  if (resultSat.ok) {
+    assertEquals(resultSat.next.toISOString(), "2024-06-24T10:00:00.000Z"); // Next Monday
+  }
+
+  // Monday
+  const anchorMon = new Date("2024-06-17T10:00:00Z");
+  const resultMon = computeNextRun(anchorMon, "workday");
+  assertEquals(resultMon.ok, true);
+  if (resultMon.ok) {
+    assertEquals(resultMon.next.toISOString(), "2024-06-18T10:00:00.000Z"); // Tuesday
+  }
+});
+
+Deno.test("validateNextIn: valid weekday aliases", () => {
+  assertEquals(validateNextIn("weekday"), null);
+  assertEquals(validateNextIn("weekdays"), null);
+  assertEquals(validateNextIn("workday"), null);
+  assertEquals(validateNextIn("workdays"), null);
+});
