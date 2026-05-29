@@ -13,6 +13,16 @@ export const JOB_STATUSES = [
   "missed",
 ] as const;
 
+/** Statuses set automatically by the program (not by user).
+ *  These can be safely filtered out from Notion pulls since
+ *  re-fetching them would be pure overhead. */
+export const NO_FETCH_STATUSES = [
+  "success",
+  "failed",
+  "error",
+  "missed",
+] as const;
+
 export type JobStatus = (typeof JOB_STATUSES)[number] | null;
 
 export interface JobInstance {

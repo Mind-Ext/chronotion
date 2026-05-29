@@ -18,6 +18,7 @@ import {
 } from "../src/notion.ts";
 import { DEFAULT_CONFIG } from "../src/config.ts";
 import type { AppConfig, JobInstance } from "../src/types.ts";
+import { NO_FETCH_STATUSES } from "../src/types.ts";
 import "@std/dotenv/load";
 
 // ─── Test Config ────────────────────────────────────────────────────
@@ -160,6 +161,73 @@ Deno.test({
 });
 
 Deno.test({
+  name: "fetchJobs: excludes program-set statuses from results",
+  ignore: !hasNotionEnv,
+  async fn() {
+    const dbId = getDatabaseId();
+    resetClient();
+    await cleanupTestPages(dbId);
+
+    const notion = getClient();
+
+    // Create a page with a program-set status (should be excluded)
+    const excludedPage = await notion.pages.create({
+      parent: { database_id: dbId },
+      properties: {
+        name: {
+          title: [{ type: "text" as const, text: { content: "completed.ts" } }],
+        },
+        script: {
+          rich_text: [
+            { type: "text" as const, text: { content: "completed.ts" } },
+          ],
+        },
+        scheduled_at: { date: { start: "2025-06-01T10:00:00.000Z" } },
+        status: { select: { name: NO_FETCH_STATUSES[0] } },
+      },
+    });
+
+    // Create a page with a non-excluded status (should be included)
+    const includedPage = await notion.pages.create({
+      parent: { database_id: dbId },
+      properties: {
+        name: {
+          title: [{ type: "text" as const, text: { content: "pending.ts" } }],
+        },
+        script: {
+          rich_text: [
+            { type: "text" as const, text: { content: "pending.ts" } },
+          ],
+        },
+        scheduled_at: { date: { start: "2025-06-01T10:00:00.000Z" } },
+        status: { select: { name: "pending" } },
+      },
+    });
+
+    const jobs = await fetchJobs(dbId);
+
+    const foundExcluded = jobs.find((j) =>
+      j.notion_page_id === excludedPage.id
+    );
+    assertEquals(
+      foundExcluded,
+      undefined,
+      `Job with status "${NO_FETCH_STATUSES[0]}" should not be fetched`,
+    );
+
+    const foundIncluded = jobs.find((j) =>
+      j.notion_page_id === includedPage.id
+    );
+    assertExists(foundIncluded, "Job with 'pending' status should be fetched");
+    assertEquals(foundIncluded.status, "pending");
+
+    await cleanupTestPages(dbId);
+  },
+  sanitizeResources: false,
+  sanitizeOps: false,
+});
+
+Deno.test({
   name: "createNextNotionInstance: creates linked next job in Notion",
   ignore: !hasNotionEnv,
   async fn() {
@@ -191,7 +259,7 @@ Deno.test({
         next_in: {
           rich_text: [{ type: "text" as const, text: { content: "1w" } }],
         },
-        status: { select: { name: "success" } },
+        status: { select: { name: "pending" } },
       },
     });
 
@@ -203,11 +271,11 @@ Deno.test({
       scheduled_at: "2025-03-01T08:00:00.000Z",
       finished_at: null,
       next_in: "1w",
-      status: "success",
+      status: "pending",
       end_on: null,
       prev_instance: null,
       next_instance: null,
-      output: "done",
+      output: "",
       notion_page_id: origPage.id,
       timeout_minutes: null,
       created_at: new Date().toISOString(),

@@ -16,7 +16,7 @@ import type {
   UpdatePageParameters,
 } from "@notionhq/client/build/src/api-endpoints.d.ts";
 import type { AppConfig, JobInstance, JobStatus } from "./types.ts";
-import { JOB_STATUSES } from "./types.ts";
+import { JOB_STATUSES, NO_FETCH_STATUSES } from "./types.ts";
 import {
   getDateString,
   getNumberValue,
@@ -206,11 +206,20 @@ export async function fetchJobs(
   let hasMore = true;
   let startCursor: string | undefined = undefined;
 
+  const filter = {
+    and: NO_FETCH_STATUSES.map((status) => ({
+      property: "status",
+      // deno-lint-ignore no-explicit-any
+      select: { does_not_equal: status } as any,
+    })),
+  };
+
   while (hasMore) {
     // deno-lint-ignore no-explicit-any
     const response: any = await notion.databases.query({
       database_id: dbId,
       start_cursor: startCursor,
+      filter,
     });
 
     for (const page of response.results) {
