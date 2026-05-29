@@ -102,9 +102,11 @@ export async function initDatabaseSchema(
     existingProps.add("scheduled_at");
   }
 
-  // Build update payload for missing properties
+  // Build update payload for missing properties and sync select options
   // deno-lint-ignore no-explicit-any
   const toAdd: Record<string, any> = {};
+  // deno-lint-ignore no-explicit-any
+  const toUpdate: Record<string, any> = {};
   for (const [name, schema] of Object.entries(REQUIRED_PROPERTIES)) {
     // Skip title — can't be added, it already exists under some name
     if ("title" in schema) continue;
@@ -121,13 +123,21 @@ export async function initDatabaseSchema(
         (propSchema as any).relation.database_id = dbId;
       }
       toAdd[name] = propSchema;
+    } else if (
+      "select" in schema &&
+      // deno-lint-ignore no-explicit-any
+      (schema as any).select?.options
+    ) {
+      // Sync select options for existing properties (e.g. status)
+      toUpdate[name] = schema;
     }
   }
 
-  if (Object.keys(toAdd).length > 0) {
+  const updatePayload = { ...toAdd, ...toUpdate };
+  if (Object.keys(updatePayload).length > 0) {
     await notion.databases.update({
       database_id: dbId,
-      properties: toAdd,
+      properties: updatePayload,
     });
   }
 }
