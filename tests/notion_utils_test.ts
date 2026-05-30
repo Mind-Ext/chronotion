@@ -13,6 +13,7 @@ import {
   parseStringArgs,
   richText,
   truncateOutput,
+  validateNotionEnvVars,
 } from "../src/notion_utils.ts";
 
 // ─── Truncation Tests ───────────────────────────────────────────────
@@ -127,4 +128,38 @@ Deno.test("richText: builds array", () => {
     type: "text",
     text: { content: "Hello" },
   }]);
+});
+
+// ─── Env Var Validation Tests ───────────────────────────────────────
+
+Deno.test("validateNotionEnvVars: reads credentials from config if provided", () => {
+  const mockConfig = {
+    notion_api_key: "cfg-api-key",
+    notion_database_id: "cfg-db-id",
+  };
+
+  // deno-lint-ignore no-explicit-any
+  const creds = validateNotionEnvVars(mockConfig as any);
+  assertEquals(creds.apiKey, "cfg-api-key");
+  assertEquals(creds.databaseId, "cfg-db-id");
+});
+
+Deno.test("validateNotionEnvVars: falls back to environment variables", () => {
+  const originalApiKey = Deno.env.get("NOTION_API_KEY");
+  const originalDbId = Deno.env.get("NOTION_DATABASE_ID");
+
+  try {
+    Deno.env.set("NOTION_API_KEY", "env-api-key");
+    Deno.env.set("NOTION_DATABASE_ID", "env-db-id");
+
+    const creds = validateNotionEnvVars();
+    assertEquals(creds.apiKey, "env-api-key");
+    assertEquals(creds.databaseId, "env-db-id");
+  } finally {
+    if (originalApiKey) Deno.env.set("NOTION_API_KEY", originalApiKey);
+    else Deno.env.delete("NOTION_API_KEY");
+
+    if (originalDbId) Deno.env.set("NOTION_DATABASE_ID", originalDbId);
+    else Deno.env.delete("NOTION_DATABASE_ID");
+  }
 });

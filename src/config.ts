@@ -16,6 +16,12 @@ export const DEFAULT_CONFIG: AppConfig = {
   // Run without Notion sync, using only local queue.json
   local_mode: false,
 
+  // Notion API key (optional if NOTION_API_KEY environment variable is set)
+  notion_api_key: "",
+
+  // Notion Database ID (optional if NOTION_DATABASE_ID environment variable is set)
+  notion_database_id: "",
+
   // Unique ID for this worker (defaults to Deno.hostname())
   worker_id: Deno.hostname(),
 

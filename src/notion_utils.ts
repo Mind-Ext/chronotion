@@ -6,31 +6,34 @@
  */
 
 import * as log from "@std/log";
-import type { JobStatus } from "./types.ts";
+import type { AppConfig, JobStatus } from "./types.ts";
 import { JOB_STATUSES } from "./types.ts";
 
 // ─── Environment Configuration ──────────────────────────────────────
 
 /**
- * Validate that required Notion environment variables are present.
+ * Validate that required Notion environment variables or config settings are present.
  * Logs a fatal error and exits the process if validation fails.
  */
-export function validateNotionEnvVars(): {
+export function validateNotionEnvVars(config?: AppConfig): {
   apiKey: string;
   databaseId: string;
 } {
-  const apiKey = Deno.env.get("NOTION_API_KEY");
-  const databaseId = Deno.env.get("NOTION_DATABASE_ID") ||
+  const apiKey = config?.notion_api_key || Deno.env.get("NOTION_API_KEY");
+  const databaseId = config?.notion_database_id ||
+    Deno.env.get("NOTION_DATABASE_ID") ||
     Deno.env.get("NOTION_TEST_DATABASE_ID");
 
   if (!apiKey || !databaseId) {
     const missing = [];
-    if (!apiKey) missing.push("NOTION_API_KEY");
-    if (!databaseId) missing.push("NOTION_DATABASE_ID");
+    if (!apiKey) missing.push("notion_api_key (or NOTION_API_KEY env)");
+    if (!databaseId) {
+      missing.push("notion_database_id (or NOTION_DATABASE_ID env)");
+    }
 
     const logger = log.getLogger();
     logger.error(
-      `Fatal: Missing required environment variables for Notion mode: ${
+      `Fatal: Missing required credentials for Notion mode: ${
         missing.join(
           ", ",
         )

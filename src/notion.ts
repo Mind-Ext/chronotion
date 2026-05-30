@@ -35,17 +35,17 @@ import {
 let _client: Client | null = null;
 
 /** Get or create the Notion client (singleton). */
-export function getClient(): Client {
+export function getClient(config?: AppConfig): Client {
   if (!_client) {
-    const { apiKey } = validateNotionEnvVars();
+    const { apiKey } = validateNotionEnvVars(config);
     _client = new Client({ auth: apiKey });
   }
   return _client;
 }
 
-/** Get the database ID from env. */
-export function getDatabaseId(): string {
-  const { databaseId } = validateNotionEnvVars();
+/** Get the database ID from config or environment. */
+export function getDatabaseId(config?: AppConfig): string {
+  const { databaseId } = validateNotionEnvVars(config);
   return databaseId;
 }
 
@@ -61,10 +61,11 @@ export function resetClient(): void {
  * This adds missing properties but never removes existing ones.
  */
 export async function initDatabaseSchema(
+  config?: AppConfig,
   databaseId?: string,
 ): Promise<void> {
-  const notion = getClient();
-  const dbId = databaseId ?? getDatabaseId();
+  const notion = getClient(config);
+  const dbId = databaseId ?? getDatabaseId(config);
 
   // Retrieve current schema
   const db = await notion.databases.retrieve({ database_id: dbId });
@@ -200,8 +201,8 @@ export async function fetchJobs(
   config?: AppConfig,
   databaseId?: string,
 ): Promise<JobInstance[]> {
-  const notion = getClient();
-  const dbId = databaseId ?? getDatabaseId();
+  const notion = getClient(config);
+  const dbId = databaseId ?? getDatabaseId(config);
   const jobs: JobInstance[] = [];
 
   let hasMore = true;
@@ -260,7 +261,7 @@ export async function updateNotionJob(
 ): Promise<void> {
   if (!job.notion_page_id) return;
 
-  const notion = getClient();
+  const notion = getClient(config);
 
   // deno-lint-ignore no-explicit-any
   const properties: Record<string, any> = {
@@ -328,8 +329,8 @@ export async function createNextNotionInstance(
   nextUid: string,
   databaseId?: string,
 ): Promise<string> {
-  const notion = getClient();
-  const dbId = databaseId ?? getDatabaseId();
+  const notion = getClient(config);
+  const dbId = databaseId ?? getDatabaseId(config);
 
   // deno-lint-ignore no-explicit-any
   const properties: Record<string, any> = {

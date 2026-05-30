@@ -644,8 +644,8 @@ async function main(): Promise<void> {
     if (cfg.local_mode || notionInitialized) return;
 
     try {
-      validateNotionEnvVars();
-      await initDatabaseSchema();
+      validateNotionEnvVars(cfg);
+      await initDatabaseSchema(cfg);
       logger.info("Notion database schema verified.");
       notionInitialized = true;
     } catch (err) {

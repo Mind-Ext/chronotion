@@ -56,10 +56,10 @@ Deno.test({
     const dbId = getDatabaseId();
     resetClient();
 
-    await initDatabaseSchema(dbId);
+    await initDatabaseSchema(testConfig, dbId);
 
     // Verify by retrieving the database schema
-    const notion = getClient();
+    const notion = getClient(testConfig);
     // deno-lint-ignore no-explicit-any
     const db: any = await notion.databases.retrieve({ database_id: dbId });
     const propNames = Object.keys(db.properties);
