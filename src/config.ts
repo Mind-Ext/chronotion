@@ -32,6 +32,9 @@ export const DEFAULT_CONFIG: AppConfig = {
   history_max_age_days: 90,
   history_max_entries: 0,
 
+  // Notion fetch limit: max age in days since last edited time (0 = no limit)
+  fetch_max_age_days: 90,
+
   // Emoji prefixes used in Notion title
   emojis: {
     pending: "",
@@ -149,6 +152,9 @@ export async function loadConfig(
 
   // Ensure poll_minutes is at least 1
   merged.poll_minutes = Math.max(1, merged.poll_minutes);
+
+  // Ensure fetch_max_age_days is at least 0
+  merged.fetch_max_age_days = Math.max(0, merged.fetch_max_age_days || 0);
 
   // Resolve scripts_dir to absolute path
   if (!path.isAbsolute(merged.scripts_dir)) {

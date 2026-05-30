@@ -197,6 +197,7 @@ function pageToJob(page: PageObjectResponse): JobInstance {
  * Uses pagination to handle large databases.
  */
 export async function fetchJobs(
+  config?: AppConfig,
   databaseId?: string,
 ): Promise<JobInstance[]> {
   const notion = getClient();
@@ -206,13 +207,27 @@ export async function fetchJobs(
   let hasMore = true;
   let startCursor: string | undefined = undefined;
 
-  const filter = {
+  // deno-lint-ignore no-explicit-any
+  const filter: any = {
     and: NO_FETCH_STATUSES.map((status) => ({
       property: "status",
       // deno-lint-ignore no-explicit-any
       select: { does_not_equal: status } as any,
     })),
   };
+
+  if (
+    config?.fetch_max_age_days !== undefined && config.fetch_max_age_days > 0
+  ) {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - config.fetch_max_age_days);
+    filter.and.push({
+      timestamp: "last_edited_time",
+      last_edited_time: {
+        on_or_after: cutoffDate.toISOString(),
+      },
+    });
+  }
 
   while (hasMore) {
     // deno-lint-ignore no-explicit-any

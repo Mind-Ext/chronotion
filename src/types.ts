@@ -77,6 +77,8 @@ export interface AppConfig {
   history_max_age_days: number;
   // Log and Queue cleanup: max number of log files/jobs (0 = no limit)
   history_max_entries: number;
+  // Notion fetch limit: max age in days of last edited time (0 = no limit)
+  fetch_max_age_days: number;
   // Emoji prefixes for status in Notion
   emojis: Record<Exclude<JobStatus, null>, string>;
   // Status display text in Notion

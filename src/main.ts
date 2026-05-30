@@ -466,7 +466,7 @@ export async function runCycle(
   // ── Pull from Notion (error-isolated) ──
   if (!config.local_mode) {
     try {
-      const remoteJobs = await fetchJobs();
+      const remoteJobs = await fetchJobs(config);
 
       // Proactive validation for newly created Notion jobs
       await validateNewJobs(remoteJobs, config);

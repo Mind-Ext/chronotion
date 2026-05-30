@@ -129,7 +129,7 @@ Deno.test({
     assertExists(testPage.id);
 
     // Fetch jobs and verify the page was pulled correctly
-    const jobs = await fetchJobs(dbId);
+    const jobs = await fetchJobs(testConfig, dbId);
     assert(jobs.length >= 1, `Expected at least 1 job, got ${jobs.length}`);
 
     const pulled = jobs.find((j) => j.notion_page_id === testPage.id);
@@ -148,7 +148,7 @@ Deno.test({
     await updateNotionJob(updatedJob, testConfig);
 
     // Fetch again and verify the update
-    const jobsAfter = await fetchJobs(dbId);
+    const jobsAfter = await fetchJobs(testConfig, dbId);
     const updated = jobsAfter.find((j) => j.notion_page_id === testPage.id);
     assertExists(updated, "Updated page not found");
     assertEquals(updated.status, "running");
@@ -204,7 +204,7 @@ Deno.test({
       },
     });
 
-    const jobs = await fetchJobs(dbId);
+    const jobs = await fetchJobs(testConfig, dbId);
 
     const foundExcluded = jobs.find((j) =>
       j.notion_page_id === excludedPage.id
@@ -294,7 +294,7 @@ Deno.test({
     assertExists(nextPageId);
 
     // Verify the next instance was created
-    const jobs = await fetchJobs(dbId);
+    const jobs = await fetchJobs(testConfig, dbId);
     const nextJob = jobs.find((j) => j.notion_page_id === nextPageId);
     assertExists(nextJob, "Next instance not found in database");
     assertEquals(nextJob.status, "pending");
@@ -347,7 +347,7 @@ Deno.test({
       },
     });
 
-    const jobs = await fetchJobs(dbId);
+    const jobs = await fetchJobs(testConfig, dbId);
     const job = jobs.find((j) => j.notion_page_id === page.id);
     assertExists(job);
 
