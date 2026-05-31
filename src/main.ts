@@ -34,6 +34,7 @@ import {
   updateNotionJob,
 } from "./notion.ts";
 import { validateNotionEnvVars } from "./notion_utils.ts";
+import { acquireProcessLock } from "./lock.ts";
 import "@std/dotenv/load";
 
 /** In-memory task registry to track running promises and prevent double-starting */
@@ -623,6 +624,8 @@ async function main(): Promise<void> {
     console.error("Error: Cannot specify both --one-off and --poll.");
     Deno.exit(1);
   }
+
+  acquireProcessLock();
 
   let config = await loadConfig();
   await setupLogger();
