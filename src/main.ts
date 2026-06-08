@@ -444,6 +444,7 @@ async function scheduleNext(
 export async function runCycle(
   config: AppConfig,
   isOneOff: boolean = false,
+  shouldSyncNotion: boolean = true,
 ): Promise<void> {
   await finalizeOrphanedRunningJobs(config);
 
@@ -472,7 +473,7 @@ export async function runCycle(
   }
 
   // ── Pull from Notion (error-isolated) ──
-  if (!config.local_mode) {
+  if (!config.local_mode && shouldSyncNotion) {
     try {
       const remoteJobs = await fetchJobs(config);
 
@@ -616,6 +617,27 @@ async function claimDueJobs(config: AppConfig): Promise<JobInstance[]> {
   return dueJobs;
 }
 
+/** Find the timestamp of the closest upcoming pending job */
+async function getNextJobTime(config: AppConfig): Promise<number> {
+  let nextJobTime = Infinity;
+  try {
+    const queue = await loadQueue();
+    for (const job of queue.jobs) {
+      if (job.status === "pending" && job.worker_id === config.worker_id) {
+        const scheduledAt = parseDate(job.scheduled_at).getTime();
+        if (scheduledAt < nextJobTime) {
+          nextJobTime = scheduledAt;
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      `Failed to read queue for next job time - ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  return nextJobTime;
+}
+
 /** Main entry point */
 async function main(): Promise<void> {
   const args = Deno.args;
@@ -677,6 +699,8 @@ async function main(): Promise<void> {
     logger.info("Starting poll loop...");
     logger.info("Orchestrator started (poll mode)");
 
+    let lastNotionSync = 0;
+
     while (true) {
       // Reload config to pick up changes (e.g. poll_minutes, local_mode, history limits)
       try {
@@ -691,16 +715,34 @@ async function main(): Promise<void> {
 
       await ensureNotion(config);
 
+      const now = Date.now();
+      const bucketSizeMs = config.poll_minutes * 60 * 1000;
+      // Use epoch-based buckets to align perfectly with wall-clock minutes like :00, :15, :30, :45
+      const currentBucketStart = Math.floor(now / bucketSizeMs) * bucketSizeMs;
+      const shouldSyncNotion = lastNotionSync < currentBucketStart;
+
       try {
-        await runCycle(config, false);
+        await runCycle(config, false, shouldSyncNotion);
+        if (shouldSyncNotion) {
+          lastNotionSync = Date.now();
+        }
       } catch (err) {
         logger.error(
           `Cycle failed - ${err instanceof Error ? err.message : String(err)}`,
         );
       }
-      await new Promise((resolve) =>
-        setTimeout(resolve, config.poll_minutes * 60 * 1000)
+
+      const nextJobTime = await getNextJobTime(config);
+      const nextSyncTime = currentBucketStart + bucketSizeMs;
+      const nextWakeupTime = Math.min(nextSyncTime, nextJobTime);
+
+      // Sleep time is the difference to the next wakeup, bounded by a reasonable minimum (e.g. 1 second)
+      const sleepTime = Math.max(1000, nextWakeupTime - Date.now());
+      logger.debug(
+        `Sleeping ${Math.round(sleepTime / 1000)}s (next job: ${nextJobTime === Infinity ? "none" : new Date(nextJobTime).toISOString()}, next sync: ${new Date(nextSyncTime).toISOString()})`,
       );
+
+      await new Promise((resolve) => setTimeout(resolve, sleepTime));
     }
   }
 }
