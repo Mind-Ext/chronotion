@@ -7,6 +7,8 @@
  *   Special: "never" (one-off, no rescheduling)
  */
 
+import { stripTzBracket } from "./notion_utils.ts";
+
 const DAY_NAMES = [
   "sunday",
   "monday",
@@ -57,12 +59,33 @@ const ORDINAL_MAP: Record<string, number> = {
 };
 
 type ScheduleResult =
-  | { ok: true; next: Date }
+  | { ok: true; next: Temporal.ZonedDateTime }
   | { ok: false; error: string };
+
+function toZonedDateTime(anchor: Date | string): Temporal.ZonedDateTime {
+  if (typeof anchor === "string") {
+    let str = anchor.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+      str += "T00:00:00Z";
+    }
+    const tzMatch = str.match(/\[([^\]]+)\]$/);
+    const offsetMatch = str.match(/([+-]\d{2}:\d{2})$/);
+    // Note: offset-only strings (no IANA zone) use a fixed offset, so DST
+    // transitions won't be handled — this is acceptable since the source
+    // already lacked timezone identity.
+    const tz = tzMatch ? tzMatch[1] : (offsetMatch ? offsetMatch[1] : "UTC");
+    const cleanStr = stripTzBracket(str);
+    const instant = Temporal.Instant.from(cleanStr);
+    return instant.toZonedDateTimeISO(tz);
+  } else {
+    const instant = Temporal.Instant.fromEpochMilliseconds(anchor.getTime());
+    return instant.toZonedDateTimeISO("UTC");
+  }
+}
 
 /** Compute next scheduled_at from the given anchor date and next_in expression */
 export function computeNextRun(
-  anchor: Date,
+  anchor: Date | string,
   nextIn: string,
 ): ScheduleResult {
   const expr = nextIn.trim().toLowerCase();
@@ -71,18 +94,21 @@ export function computeNextRun(
     return { ok: false, error: "never" };
   }
 
+  // Convert anchor to ZonedDateTime
+  const zdt = toZonedDateTime(anchor);
+
   // Try interval format: "N unit"
-  const intervalResult = parseInterval(expr, anchor);
+  const intervalResult = parseInterval(expr, zdt);
   if (intervalResult) return intervalResult;
 
   // Try macro format: "ordinal weekday/day of period"
-  const macroResult = parseMacro(expr, anchor);
+  const macroResult = parseMacro(expr, zdt);
   if (macroResult) return macroResult;
 
   // Try weekday list format: "mon,wed,fri"
   const weekdayList = parseWeekdayList(expr);
   if (weekdayList && weekdayList.length > 0) {
-    const next = computeNextWeekday(anchor, weekdayList);
+    const next = computeNextWeekday(zdt, weekdayList);
     return { ok: true, next };
   }
 
@@ -143,10 +169,14 @@ export function dateMatchesMacro(date: Date, nextIn: string): boolean {
   if (!result) return true; // Not a macro, no validation needed
 
   const { ordinal, target, period } = result;
-  return dateMatchesSpec(date, ordinal, target, period);
+  const zdt = toZonedDateTime(date);
+  return dateMatchesSpec(zdt, ordinal, target, period);
 }
 
-function parseInterval(expr: string, anchor: Date): ScheduleResult | null {
+function parseInterval(
+  expr: string,
+  anchor: Temporal.ZonedDateTime,
+): ScheduleResult | null {
   const match = expr.match(
     /^(\d+)\s*(d|day|days|w|week|weeks|m|month|months|y|yr|year|years)$/,
   );
@@ -160,16 +190,18 @@ function parseInterval(expr: string, anchor: Date): ScheduleResult | null {
     };
   }
   const unit = match[2];
-  const next = new Date(anchor);
 
+  let next: Temporal.ZonedDateTime;
   if (unit.startsWith("d")) {
-    next.setDate(next.getDate() + count);
+    next = anchor.add({ days: count });
   } else if (unit.startsWith("w")) {
-    next.setDate(next.getDate() + count * 7);
+    next = anchor.add({ weeks: count });
   } else if (unit.startsWith("m")) {
-    next.setMonth(next.getMonth() + count);
+    next = anchor.add({ months: count });
   } else if (unit.startsWith("y")) {
-    next.setFullYear(next.getFullYear() + count);
+    next = anchor.add({ years: count });
+  } else {
+    return null;
   }
 
   return { ok: true, next };
@@ -212,57 +244,60 @@ function parseMacroSpec(expr: string): MacroSpec | null {
   return { ordinal, target, period };
 }
 
-function parseMacro(expr: string, anchor: Date): ScheduleResult | null {
+function parseMacro(
+  expr: string,
+  anchor: Temporal.ZonedDateTime,
+): ScheduleResult | null {
   const spec = parseMacroSpec(expr);
   if (!spec) return null;
 
   const { ordinal, target, period } = spec;
 
   // Determine the next occurrence AFTER the anchor
-  // Start searching from the month after anchor (or the target month)
-  let searchDate = new Date(anchor);
+  let searchZdt = anchor;
 
   for (let i = 0; i < 24; i++) {
     // Search up to 2 years ahead
     if (period === "month") {
       // Move to next month
-      if (i > 0) searchDate.setMonth(searchDate.getMonth() + 1);
+      if (i > 0) {
+        searchZdt = searchZdt.add({ months: 1 });
+      }
     } else {
       // Specific month — find the next occurrence of that month
       const targetMonth = MONTH_NAMES.indexOf(
         period as typeof MONTH_NAMES[number],
-      );
+      ) + 1; // 1-indexed in Temporal
       if (i === 0) {
         // Start from current year's target month, or next year if passed
-        searchDate = new Date(anchor.getFullYear(), targetMonth, 1);
-        if (searchDate <= anchor) {
-          searchDate = new Date(anchor.getFullYear() + 1, targetMonth, 1);
+        searchZdt = Temporal.ZonedDateTime.from({
+          year: anchor.year,
+          month: targetMonth,
+          day: 1,
+          hour: anchor.hour,
+          minute: anchor.minute,
+          second: anchor.second,
+          millisecond: anchor.millisecond,
+          microsecond: anchor.microsecond,
+          nanosecond: anchor.nanosecond,
+          timeZone: anchor.timeZoneId,
+        });
+        if (Temporal.Instant.compare(searchZdt.toInstant(), anchor.toInstant()) <= 0) {
+          searchZdt = searchZdt.add({ years: 1 });
         }
       } else {
-        searchDate = new Date(
-          searchDate.getFullYear() + 1,
-          targetMonth,
-          1,
-        );
+        searchZdt = searchZdt.add({ years: 1 });
       }
     }
 
-    const result = findOrdinalInMonth(
-      searchDate.getFullYear(),
-      searchDate.getMonth(),
+    const resultZdt = findOrdinalInMonth(
+      searchZdt,
       ordinal,
       target,
     );
 
-    if (result && result > anchor) {
-      // Preserve the time from the anchor
-      result.setHours(
-        anchor.getHours(),
-        anchor.getMinutes(),
-        anchor.getSeconds(),
-        anchor.getMilliseconds(),
-      );
-      return { ok: true, next: result };
+    if (resultZdt && Temporal.Instant.compare(resultZdt.toInstant(), anchor.toInstant()) > 0) {
+      return { ok: true, next: resultZdt };
     }
   }
 
@@ -270,20 +305,19 @@ function parseMacro(expr: string, anchor: Date): ScheduleResult | null {
 }
 
 function findOrdinalInMonth(
-  year: number,
-  month: number,
+  searchZdt: Temporal.ZonedDateTime,
   ordinal: number,
   target: string,
-): Date | null {
+): Temporal.ZonedDateTime | null {
   if (target === "day") {
     // Nth day of the month
+    const daysInMonth = searchZdt.daysInMonth;
     if (ordinal === -1) {
       // Last day
-      return new Date(year, month + 1, 0);
+      return searchZdt.with({ day: daysInMonth });
     }
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
     if (ordinal > daysInMonth) return null;
-    return new Date(year, month, ordinal);
+    return searchZdt.with({ day: ordinal });
   }
 
   // Nth weekday of the month
@@ -292,29 +326,29 @@ function findOrdinalInMonth(
 
   if (ordinal === -1) {
     // Last occurrence: start from end of month, walk backward
-    const lastDay = new Date(year, month + 1, 0);
-    for (let d = lastDay.getDate(); d >= 1; d--) {
-      const date = new Date(year, month, d);
-      if (date.getDay() === targetDay) return date;
+    const daysInMonth = searchZdt.daysInMonth;
+    for (let d = daysInMonth; d >= 1; d--) {
+      const zdt = searchZdt.with({ day: d });
+      if (zdt.dayOfWeek % 7 === targetDay) return zdt;
     }
     return null;
   }
 
   // Find the Nth occurrence
   let count = 0;
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInMonth = searchZdt.daysInMonth;
   for (let d = 1; d <= daysInMonth; d++) {
-    const date = new Date(year, month, d);
-    if (date.getDay() === targetDay) {
+    const zdt = searchZdt.with({ day: d });
+    if (zdt.dayOfWeek % 7 === targetDay) {
       count++;
-      if (count === ordinal) return date;
+      if (count === ordinal) return zdt;
     }
   }
   return null;
 }
 
 function dateMatchesSpec(
-  date: Date,
+  zdt: Temporal.ZonedDateTime,
   ordinal: number,
   target: string,
   period: string,
@@ -323,22 +357,21 @@ function dateMatchesSpec(
   if (period !== "month") {
     const targetMonth = MONTH_NAMES.indexOf(
       period as typeof MONTH_NAMES[number],
-    );
-    if (date.getMonth() !== targetMonth) return false;
+    ) + 1; // 1-indexed in Temporal
+    if (zdt.month !== targetMonth) return false;
   }
 
   // Check target (day/weekday match)
   const expected = findOrdinalInMonth(
-    date.getFullYear(),
-    date.getMonth(),
+    zdt,
     ordinal,
     target,
   );
   if (!expected) return false;
 
   return (
-    date.getDate() === expected.getDate() &&
-    date.getMonth() === expected.getMonth()
+    zdt.day === expected.day &&
+    zdt.month === expected.month
   );
 }
 
@@ -373,8 +406,11 @@ function parseWeekdayList(expr: string): number[] | null {
   return Array.from(new Set(dayIndices)).sort((a, b) => a - b);
 }
 
-function computeNextWeekday(anchor: Date, dayIndices: number[]): Date {
-  const currentDay = anchor.getDay();
+function computeNextWeekday(
+  zdt: Temporal.ZonedDateTime,
+  dayIndices: number[],
+): Temporal.ZonedDateTime {
+  const currentDay = zdt.dayOfWeek % 7; // Map 1-7 to 0-6
   let daysToAdd = 1;
   for (; daysToAdd <= 7; daysToAdd++) {
     const target = (currentDay + daysToAdd) % 7;
@@ -383,7 +419,5 @@ function computeNextWeekday(anchor: Date, dayIndices: number[]): Date {
     }
   }
 
-  const next = new Date(anchor);
-  next.setDate(next.getDate() + daysToAdd);
-  return next;
+  return zdt.add({ days: daysToAdd });
 }

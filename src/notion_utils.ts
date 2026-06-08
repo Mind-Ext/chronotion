@@ -97,11 +97,29 @@ export function getPlainText(
   return arr.map((t) => t.plain_text).join("");
 }
 
-/** Safely extract a date string from a Notion date property. */
+/**
+ * Strip a trailing Temporal-style timezone bracket suffix (e.g. `[America/New_York]`)
+ * from a date string. Returns the string unchanged if no bracket is present.
+ */
+export function stripTzBracket(str: string): string {
+  return str.replace(/\[[^\]]+\]$/, "");
+}
+
+/**
+ * Safely extract a date string from a Notion date property.
+ *
+ * Returns a Temporal `ZonedDateTime.toString()` representation that preserves
+ * timezone identity (e.g. `2026-06-08T00:55:00-04:00[America/New_York]`),
+ * a plain ISO string for UTC dates, or the raw date-only string for `YYYY-MM-DD`.
+ */
 export function getDateString(
-  prop: { type: "date"; date: { start: string } | null } | undefined,
+  prop:
+    | { type: "date"; date: { start: string; time_zone?: string | null } | null }
+    | undefined,
 ): string | null {
-  const start = prop?.date?.start;
+  const dateObj = prop?.date;
+  if (!dateObj) return null;
+  const start = dateObj.start;
   if (!start) return null;
 
   // Preserve date-only format (YYYY-MM-DD)
@@ -109,12 +127,69 @@ export function getDateString(
     return start;
   }
 
-  // Normalize date-time strings to full ISO format (e.g. normalize +00:00 to Z)
+  // Preserve timezone and offset if possible, otherwise normalize to ISO format
   try {
-    return new Date(start).toISOString();
+    const tz = dateObj.time_zone;
+    if (tz) {
+      if (tz === "UTC") {
+        return new Date(start).toISOString();
+      }
+      const instant = Temporal.Instant.from(start);
+      return instant.toZonedDateTimeISO(tz).toString();
+    } else {
+      // No named timezone — check if it's UTC first (avoids unnecessary Instant allocation)
+      if (start.endsWith("Z") || start.includes("+00:00") || start.includes("-00:00")) {
+        return new Date(start).toISOString();
+      }
+      const offsetMatch = start.match(/([+-]\d{2}:\d{2})$/);
+      const offset = offsetMatch ? offsetMatch[1] : "UTC";
+      if (offset === "UTC") {
+        return new Date(start).toISOString();
+      }
+      const instant = Temporal.Instant.from(start);
+      return instant.toZonedDateTimeISO(offset).toString();
+    }
   } catch {
-    return start;
+    try {
+      return new Date(start).toISOString();
+    } catch {
+      return start;
+    }
   }
+}
+
+/**
+ * Parse a date string into a legacy `Date` object, stripping any trailing
+ * Temporal bracket suffix first. Use this when you need epoch-millis comparison
+ * but don't need timezone identity.
+ */
+export function parseDate(str: string): Date {
+  return new Date(stripTzBracket(str));
+}
+
+/**
+ * Parse a date string (possibly containing a bracketed timezone) into the
+ * `{ start, time_zone }` shape expected by the Notion API date property.
+ *
+ * Named timezones (e.g. `[America/New_York]`) are passed through;
+ * offset-only brackets (e.g. `[-04:00]`) are discarded since Notion
+ * doesn't accept raw offsets as `time_zone`.
+ */
+export function parseNotionDateString(str: string): { start: string; time_zone: string | null } {
+  const tzMatch = str.match(/\[([^\]]+)\]$/);
+  const start = stripTzBracket(str);
+
+  let timeZone: string | null = null;
+  if (tzMatch) {
+    const tz = tzMatch[1];
+    // Notion only accepts valid named timezone identifiers (e.g. "America/New_York").
+    // If the timezone bracket is just an offset (like "[-04:00]"), we leave time_zone as null.
+    if (!tz.startsWith("+") && !tz.startsWith("-")) {
+      timeZone = tz;
+    }
+  }
+
+  return { start, time_zone: timeZone };
 }
 
 /** Safely extract a select value. */

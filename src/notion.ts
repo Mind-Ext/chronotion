@@ -23,6 +23,7 @@ import {
   getPlainText,
   getRelationId,
   getSelectValue,
+  parseNotionDateString,
   parseStringArgs,
   REQUIRED_PROPERTIES,
   richText,
@@ -338,7 +339,7 @@ export async function createNextNotionInstance(
     script: { rich_text: richText(job.script) },
     args: { rich_text: richText(job.args.join(" ")) },
     deno_args: { rich_text: richText(job.deno_args.join(" ")) },
-    scheduled_at: { date: { start: nextRunAt } },
+    scheduled_at: { date: parseNotionDateString(nextRunAt) },
     next_in: { rich_text: richText(job.next_in) },
     status: { select: { name: "pending" } },
     worker_id: { select: job.worker_id ? { name: job.worker_id } : null },
@@ -346,7 +347,7 @@ export async function createNextNotionInstance(
   };
 
   if (job.end_on) {
-    properties.end_on = { date: { start: job.end_on } };
+    properties.end_on = { date: parseNotionDateString(job.end_on) };
   }
 
   if (job.timeout_minutes !== null) {

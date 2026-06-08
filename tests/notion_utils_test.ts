@@ -10,6 +10,8 @@ import {
   getPlainText,
   getRelationId,
   getSelectValue,
+  parseDate,
+  parseNotionDateString,
   parseStringArgs,
   richText,
   truncateOutput,
@@ -95,6 +97,48 @@ Deno.test("getDateString: preserves date-only strings", () => {
     date: { start: "2023-01-01" },
   };
   assertEquals(getDateString(prop), "2023-01-01");
+});
+
+Deno.test("getDateString: preserves timezone and offset", () => {
+  // Test with named timezone
+  const prop1 = {
+    type: "date" as const,
+    date: { start: "2026-06-08T00:55:00.000-04:00", time_zone: "America/New_York" },
+  };
+  assertEquals(getDateString(prop1), "2026-06-08T00:55:00-04:00[America/New_York]");
+
+  // Test with offset only
+  const prop2 = {
+    type: "date" as const,
+    date: { start: "2026-06-08T00:55:00.000-04:00", time_zone: null },
+  };
+  assertEquals(getDateString(prop2), "2026-06-08T00:55:00-04:00[-04:00]");
+
+  // Test with UTC / Z (should normalize to .toISOString() standard format)
+  const prop3 = {
+    type: "date" as const,
+    date: { start: "2026-06-08T00:55:00.000Z", time_zone: null },
+  };
+  assertEquals(getDateString(prop3), "2026-06-08T00:55:00.000Z");
+});
+
+Deno.test("parseDate: strips timezone bracket suffix", () => {
+  const d = parseDate("2026-06-08T00:55:00-04:00[America/New_York]");
+  assertEquals(d.getTime(), new Date("2026-06-08T00:55:00-04:00").getTime());
+});
+
+Deno.test("parseNotionDateString: extracts start and time_zone", () => {
+  // Named timezone
+  const res1 = parseNotionDateString("2026-06-08T00:55:00-04:00[America/New_York]");
+  assertEquals(res1, { start: "2026-06-08T00:55:00-04:00", time_zone: "America/New_York" });
+
+  // Offset only timezone
+  const res2 = parseNotionDateString("2026-06-08T00:55:00-04:00[-04:00]");
+  assertEquals(res2, { start: "2026-06-08T00:55:00-04:00", time_zone: null });
+
+  // UTC / no brackets
+  const res3 = parseNotionDateString("2026-06-08T00:55:00.000Z");
+  assertEquals(res3, { start: "2026-06-08T00:55:00.000Z", time_zone: null });
 });
 
 Deno.test("getSelectValue: extracts name", () => {

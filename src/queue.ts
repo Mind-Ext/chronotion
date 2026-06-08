@@ -6,6 +6,7 @@ import * as path from "@std/path";
 import type { JobInstance, MergeResult, QueueData } from "./types.ts";
 import { PROJECT_ROOT } from "./config.ts";
 import { logger } from "./logger.ts";
+import { parseDate } from "./notion_utils.ts";
 
 const QUEUE_PATH = path.join(PROJECT_ROOT, "local", "queue.json");
 
@@ -246,7 +247,7 @@ export function cleanupQueue(
 
   // Sort oldest first based on scheduled_at
   terminalJobs.sort((a, b) =>
-    new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
+    parseDate(a.scheduled_at).getTime() - parseDate(b.scheduled_at).getTime()
   );
 
   const toDelete = new Set<string>();
@@ -256,7 +257,7 @@ export function cleanupQueue(
   if (maxAgeDays > 0) {
     const cutoff = now - maxAgeDays * 24 * 60 * 60 * 1000;
     for (const job of terminalJobs) {
-      if (new Date(job.scheduled_at).getTime() < cutoff) {
+      if (parseDate(job.scheduled_at).getTime() < cutoff) {
         toDelete.add(job.uid);
       }
     }

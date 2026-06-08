@@ -33,7 +33,7 @@ import {
   initDatabaseSchema,
   updateNotionJob,
 } from "./notion.ts";
-import { validateNotionEnvVars } from "./notion_utils.ts";
+import { parseDate, stripTzBracket, validateNotionEnvVars } from "./notion_utils.ts";
 import { acquireProcessLock } from "./lock.ts";
 import "@std/dotenv/load";
 
@@ -113,7 +113,7 @@ export function findDueJobs(
     // or unassigned jobs (as per requirement).
     if (job.worker_id !== config.worker_id) return false;
 
-    const scheduledAt = new Date(job.scheduled_at).getTime();
+    const scheduledAt = parseDate(job.scheduled_at).getTime();
     return scheduledAt <= now;
   });
 }
@@ -344,7 +344,7 @@ async function scheduleNext(
   queue: QueueData,
   config: AppConfig,
 ): Promise<void> {
-  let anchor = new Date(job.scheduled_at);
+  let anchor = job.scheduled_at;
   let result = computeNextRun(anchor, job.next_in);
 
   if (!result.ok) {
@@ -356,13 +356,17 @@ async function scheduleNext(
     return; // One-off job or error, no rescheduling
   }
 
-  const now = new Date();
+  const nowInstant = Temporal.Now.instant();
   let iterations = 0;
   const maxIterations = 10000;
 
   // Fast-forward schedule if behind
-  while (result.ok && result.next < now && iterations < maxIterations) {
-    anchor = result.next;
+  while (
+    result.ok &&
+    Temporal.Instant.compare(result.next.toInstant(), nowInstant) < 0 &&
+    iterations < maxIterations
+  ) {
+    anchor = result.next.toString();
     result = computeNextRun(anchor, job.next_in);
     iterations++;
   }
@@ -379,14 +383,17 @@ async function scheduleNext(
   }
 
   // Check end_on
-  if (job.end_on && result.next.getTime() > new Date(job.end_on).getTime()) {
+  if (
+    job.end_on &&
+    Temporal.Instant.compare(result.next.toInstant(), Temporal.Instant.from(stripTzBracket(job.end_on))) > 0
+  ) {
     logger.info(
       `[${job.uid}] ${job.script}: reached end_on date, not rescheduling`,
     );
     return;
   }
 
-  const nextRunAt = result.next.toISOString();
+  const nextRunAt = result.next.toString();
   const nextUid = generateUid();
 
   // 1. Create local job first (Local First)
@@ -548,7 +555,7 @@ async function claimDueJobs(config: AppConfig): Promise<JobInstance[]> {
     const now = new Date();
 
     for (const job of allDueJobs) {
-      const scheduledAt = new Date(job.scheduled_at);
+      const scheduledAt = parseDate(job.scheduled_at);
       const ageMinutes = (now.getTime() - scheduledAt.getTime()) / 60000;
 
       if (config.lookback_minutes > 0 && ageMinutes > config.lookback_minutes) {
