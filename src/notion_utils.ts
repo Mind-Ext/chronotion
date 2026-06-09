@@ -116,6 +116,7 @@ export function getDateString(
   prop:
     | { type: "date"; date: { start: string; time_zone?: string | null } | null }
     | undefined,
+  defaultTimeZone?: string,
 ): string | null {
   const dateObj = prop?.date;
   if (!dateObj) return null;
@@ -147,6 +148,16 @@ export function getDateString(
         return new Date(start).toISOString();
       }
       const instant = Temporal.Instant.from(start);
+      if (defaultTimeZone) {
+        try {
+          const zdt = instant.toZonedDateTimeISO(defaultTimeZone);
+          if (zdt.offset === offset) {
+            return zdt.toString();
+          }
+        } catch {
+          // If defaultTimeZone is invalid/unknown, fall back to offset
+        }
+      }
       return instant.toZonedDateTimeISO(offset).toString();
     }
   } catch {

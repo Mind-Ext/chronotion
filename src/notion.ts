@@ -151,7 +151,7 @@ export { truncateOutput };
 // ─── Pull Logic ─────────────────────────────────────────────────────
 
 /** Convert a Notion page to a JobInstance. */
-function pageToJob(page: PageObjectResponse): JobInstance {
+function pageToJob(page: PageObjectResponse, config?: AppConfig): JobInstance {
   // deno-lint-ignore no-explicit-any
   const props = page.properties as Record<string, any>;
 
@@ -159,11 +159,11 @@ function pageToJob(page: PageObjectResponse): JobInstance {
   const script = getPlainText(props.script);
   const argsRaw = getPlainText(props.args);
   const denoArgsRaw = getPlainText(props.deno_args);
-  const scheduledAt = getDateString(props.scheduled_at) ??
-    getDateString(props.run_at);
-  const finishedAt = getDateString(props.finished_at);
+  const scheduledAt = getDateString(props.scheduled_at, config?.default_timezone) ??
+    getDateString(props.run_at, config?.default_timezone);
+  const finishedAt = getDateString(props.finished_at, config?.default_timezone);
   const nextIn = getPlainText(props.next_in);
-  const endOn = getDateString(props.end_on);
+  const endOn = getDateString(props.end_on, config?.default_timezone);
   const statusRaw = getSelectValue(props.status);
   const uid = getPlainText(props.uid);
   const workerId = getSelectValue(props.worker_id);
@@ -240,7 +240,7 @@ export async function fetchJobs(
     });
 
     for (const page of response.results) {
-      jobs.push(pageToJob(page));
+      jobs.push(pageToJob(page, config));
     }
 
     hasMore = response.has_more;

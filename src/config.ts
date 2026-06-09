@@ -16,6 +16,9 @@ export const DEFAULT_CONFIG: AppConfig = {
   // Run without Notion sync, using only local queue.json
   local_mode: false,
 
+  // Default timezone to use as a fallback if Notion does not return one (optional)
+  default_timezone: "",
+
   // Notion API key (optional if NOTION_API_KEY environment variable is set)
   notion_api_key: "",
 

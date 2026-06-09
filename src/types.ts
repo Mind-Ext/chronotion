@@ -65,6 +65,8 @@ export interface JobInstance {
 export interface AppConfig {
   // If true, Notion sync is disabled
   local_mode: boolean;
+  // Default timezone to use as a fallback if Notion does not return one (optional)
+  default_timezone?: string;
   // Notion API key (optional if NOTION_API_KEY environment variable is set)
   notion_api_key?: string;
   // Notion Database ID (optional if NOTION_DATABASE_ID environment variable is set)

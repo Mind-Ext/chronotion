@@ -114,6 +114,28 @@ Deno.test("getDateString: preserves timezone and offset", () => {
   };
   assertEquals(getDateString(prop2), "2026-06-08T00:55:00-04:00[-04:00]");
 
+  // Test with defaultTimeZone (matching offset)
+  assertEquals(
+    getDateString(prop2, "America/New_York"),
+    "2026-06-08T00:55:00-04:00[America/New_York]",
+  );
+
+  // Test with defaultTimeZone (mismatching offset)
+  assertEquals(
+    getDateString(prop2, "Asia/Shanghai"),
+    "2026-06-08T00:55:00-04:00[-04:00]",
+  );
+
+  // Test with winter date (matching standard time offset -05:00)
+  const propWinter = {
+    type: "date" as const,
+    date: { start: "2026-12-08T00:55:00.000-05:00", time_zone: null },
+  };
+  assertEquals(
+    getDateString(propWinter, "America/New_York"),
+    "2026-12-08T00:55:00-05:00[America/New_York]",
+  );
+
   // Test with UTC / Z (should normalize to .toISOString() standard format)
   const prop3 = {
     type: "date" as const,
