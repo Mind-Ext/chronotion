@@ -158,6 +158,8 @@ async function validateNewJobs(
           errorMsg = "Validation failed: Missing script name.";
         } else if (!rJob.scheduled_at || rJob.scheduled_at.trim() === "") {
           errorMsg = "Validation failed: Missing scheduled_at (start time).";
+        } else if (/^\d{4}-\d{2}-\d{2}$/.test(rJob.scheduled_at.trim())) {
+          errorMsg = "Validation failed: scheduled_at must include a time component (e.g. YYYY-MM-DDTHH:MM).";
         } else {
           const validationError = validateNextIn(rJob.next_in);
           if (validationError) {
