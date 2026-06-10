@@ -159,8 +159,9 @@ function pageToJob(page: PageObjectResponse, config?: AppConfig): JobInstance {
   const script = getPlainText(props.script);
   const argsRaw = getPlainText(props.args);
   const denoArgsRaw = getPlainText(props.deno_args);
-  const scheduledAt = getDateString(props.scheduled_at, config?.default_timezone) ??
-    getDateString(props.run_at, config?.default_timezone);
+  const scheduledAt =
+    getDateString(props.scheduled_at, config?.default_timezone) ??
+      getDateString(props.run_at, config?.default_timezone);
   const finishedAt = getDateString(props.finished_at, config?.default_timezone);
   const nextIn = getPlainText(props.next_in);
   const endOn = getDateString(props.end_on, config?.default_timezone);

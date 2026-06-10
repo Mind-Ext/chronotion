@@ -103,9 +103,15 @@ Deno.test("getDateString: preserves timezone and offset", () => {
   // Test with named timezone
   const prop1 = {
     type: "date" as const,
-    date: { start: "2026-06-08T00:55:00.000-04:00", time_zone: "America/New_York" },
+    date: {
+      start: "2026-06-08T00:55:00.000-04:00",
+      time_zone: "America/New_York",
+    },
   };
-  assertEquals(getDateString(prop1), "2026-06-08T00:55:00-04:00[America/New_York]");
+  assertEquals(
+    getDateString(prop1),
+    "2026-06-08T00:55:00-04:00[America/New_York]",
+  );
 
   // Test with offset only
   const prop2 = {
@@ -151,8 +157,13 @@ Deno.test("parseDate: strips timezone bracket suffix", () => {
 
 Deno.test("parseNotionDateString: extracts start and time_zone", () => {
   // Named timezone
-  const res1 = parseNotionDateString("2026-06-08T00:55:00-04:00[America/New_York]");
-  assertEquals(res1, { start: "2026-06-08T00:55:00-04:00", time_zone: "America/New_York" });
+  const res1 = parseNotionDateString(
+    "2026-06-08T00:55:00-04:00[America/New_York]",
+  );
+  assertEquals(res1, {
+    start: "2026-06-08T00:55:00-04:00",
+    time_zone: "America/New_York",
+  });
 
   // Offset only timezone
   const res2 = parseNotionDateString("2026-06-08T00:55:00-04:00[-04:00]");

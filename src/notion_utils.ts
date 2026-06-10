@@ -114,7 +114,10 @@ export function stripTzBracket(str: string): string {
  */
 export function getDateString(
   prop:
-    | { type: "date"; date: { start: string; time_zone?: string | null } | null }
+    | {
+      type: "date";
+      date: { start: string; time_zone?: string | null } | null;
+    }
     | undefined,
   defaultTimeZone?: string,
 ): string | null {
@@ -139,7 +142,10 @@ export function getDateString(
       return instant.toZonedDateTimeISO(tz).toString();
     } else {
       // No named timezone — check if it's UTC first (avoids unnecessary Instant allocation)
-      if (start.endsWith("Z") || start.includes("+00:00") || start.includes("-00:00")) {
+      if (
+        start.endsWith("Z") || start.includes("+00:00") ||
+        start.includes("-00:00")
+      ) {
         return new Date(start).toISOString();
       }
       const offsetMatch = start.match(/([+-]\d{2}:\d{2})$/);
@@ -186,7 +192,9 @@ export function parseDate(str: string): Date {
  * offset-only brackets (e.g. `[-04:00]`) are discarded since Notion
  * doesn't accept raw offsets as `time_zone`.
  */
-export function parseNotionDateString(str: string): { start: string; time_zone: string | null } {
+export function parseNotionDateString(
+  str: string,
+): { start: string; time_zone: string | null } {
   const tzMatch = str.match(/\[([^\]]+)\]$/);
   const start = stripTzBracket(str);
 

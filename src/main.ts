@@ -33,7 +33,11 @@ import {
   initDatabaseSchema,
   updateNotionJob,
 } from "./notion.ts";
-import { parseDate, stripTzBracket, validateNotionEnvVars } from "./notion_utils.ts";
+import {
+  parseDate,
+  stripTzBracket,
+  validateNotionEnvVars,
+} from "./notion_utils.ts";
 import { acquireProcessLock } from "./lock.ts";
 import "@std/dotenv/load";
 
@@ -159,7 +163,8 @@ async function validateNewJobs(
         } else if (!rJob.scheduled_at || rJob.scheduled_at.trim() === "") {
           errorMsg = "Validation failed: Missing scheduled_at (start time).";
         } else if (/^\d{4}-\d{2}-\d{2}$/.test(rJob.scheduled_at.trim())) {
-          errorMsg = "Validation failed: scheduled_at must include a time component (e.g. YYYY-MM-DDTHH:MM).";
+          errorMsg =
+            "Validation failed: scheduled_at must include a time component (e.g. YYYY-MM-DDTHH:MM).";
         } else {
           const validationError = validateNextIn(rJob.next_in);
           if (validationError) {
@@ -387,7 +392,10 @@ async function scheduleNext(
   // Check end_on
   if (
     job.end_on &&
-    Temporal.Instant.compare(result.next.toInstant(), Temporal.Instant.from(stripTzBracket(job.end_on))) > 0
+    Temporal.Instant.compare(
+        result.next.toInstant(),
+        Temporal.Instant.from(stripTzBracket(job.end_on)),
+      ) > 0
   ) {
     logger.info(
       `[${job.uid}] ${job.script}: reached end_on date, not rescheduling`,
@@ -634,7 +642,9 @@ async function getNextJobTime(config: AppConfig): Promise<number> {
     }
   } catch (err) {
     logger.warn(
-      `Failed to read queue for next job time - ${err instanceof Error ? err.message : String(err)}`,
+      `Failed to read queue for next job time - ${
+        err instanceof Error ? err.message : String(err)
+      }`,
     );
   }
   return nextJobTime;
@@ -741,7 +751,11 @@ async function main(): Promise<void> {
       // Sleep time is the difference to the next wakeup, bounded by a reasonable minimum (e.g. 1 second)
       const sleepTime = Math.max(1000, nextWakeupTime - Date.now());
       logger.debug(
-        `Sleeping ${Math.round(sleepTime / 1000)}s (next job: ${nextJobTime === Infinity ? "none" : new Date(nextJobTime).toISOString()}, next sync: ${new Date(nextSyncTime).toISOString()})`,
+        `Sleeping ${Math.round(sleepTime / 1000)}s (next job: ${
+          nextJobTime === Infinity
+            ? "none"
+            : new Date(nextJobTime).toISOString()
+        }, next sync: ${new Date(nextSyncTime).toISOString()})`,
       );
 
       await new Promise((resolve) => setTimeout(resolve, sleepTime));

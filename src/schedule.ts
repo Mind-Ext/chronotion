@@ -282,7 +282,10 @@ function parseMacro(
           nanosecond: anchor.nanosecond,
           timeZone: anchor.timeZoneId,
         });
-        if (Temporal.Instant.compare(searchZdt.toInstant(), anchor.toInstant()) <= 0) {
+        if (
+          Temporal.Instant.compare(searchZdt.toInstant(), anchor.toInstant()) <=
+            0
+        ) {
           searchZdt = searchZdt.add({ years: 1 });
         }
       } else {
@@ -296,7 +299,10 @@ function parseMacro(
       target,
     );
 
-    if (resultZdt && Temporal.Instant.compare(resultZdt.toInstant(), anchor.toInstant()) > 0) {
+    if (
+      resultZdt &&
+      Temporal.Instant.compare(resultZdt.toInstant(), anchor.toInstant()) > 0
+    ) {
       return { ok: true, next: resultZdt };
     }
   }

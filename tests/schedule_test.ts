@@ -12,7 +12,10 @@ Deno.test("interval: 1 day", () => {
   const result = computeNextRun(anchor, "1d");
   assertEquals(result.ok, true);
   if (result.ok) {
-    assertEquals(new Date(result.next.epochMilliseconds).toISOString(), "2024-06-16T10:00:00.000Z");
+    assertEquals(
+      new Date(result.next.epochMilliseconds).toISOString(),
+      "2024-06-16T10:00:00.000Z",
+    );
   }
 });
 
@@ -21,7 +24,10 @@ Deno.test("interval: 3 days", () => {
   const result = computeNextRun(anchor, "3 days");
   assertEquals(result.ok, true);
   if (result.ok) {
-    assertEquals(new Date(result.next.epochMilliseconds).toISOString(), "2024-06-18T10:00:00.000Z");
+    assertEquals(
+      new Date(result.next.epochMilliseconds).toISOString(),
+      "2024-06-18T10:00:00.000Z",
+    );
   }
 });
 
@@ -30,7 +36,10 @@ Deno.test("interval: 2 weeks", () => {
   const result = computeNextRun(anchor, "2w");
   assertEquals(result.ok, true);
   if (result.ok) {
-    assertEquals(new Date(result.next.epochMilliseconds).toISOString(), "2024-06-29T10:00:00.000Z");
+    assertEquals(
+      new Date(result.next.epochMilliseconds).toISOString(),
+      "2024-06-29T10:00:00.000Z",
+    );
   }
 });
 
@@ -49,7 +58,10 @@ Deno.test("interval: 1 year", () => {
   const result = computeNextRun(anchor, "1 year");
   assertEquals(result.ok, true);
   if (result.ok) {
-    assertEquals(new Date(result.next.epochMilliseconds).toISOString(), "2025-06-15T10:00:00.000Z");
+    assertEquals(
+      new Date(result.next.epochMilliseconds).toISOString(),
+      "2025-06-15T10:00:00.000Z",
+    );
   }
 });
 
@@ -160,7 +172,10 @@ Deno.test("weekday list: mon,wed", () => {
   const result = computeNextRun(anchor, "mon,wed");
   assertEquals(result.ok, true);
   if (result.ok) {
-    assertEquals(new Date(result.next.epochMilliseconds).toISOString(), "2024-06-19T10:00:00.000Z"); // Wednesday
+    assertEquals(
+      new Date(result.next.epochMilliseconds).toISOString(),
+      "2024-06-19T10:00:00.000Z",
+    ); // Wednesday
   }
 });
 
@@ -169,7 +184,10 @@ Deno.test("weekday list: wednesday, friday (from Wednesday)", () => {
   const result = computeNextRun(anchor, "wednesday, friday");
   assertEquals(result.ok, true);
   if (result.ok) {
-    assertEquals(new Date(result.next.epochMilliseconds).toISOString(), "2024-06-21T10:00:00.000Z"); // Friday
+    assertEquals(
+      new Date(result.next.epochMilliseconds).toISOString(),
+      "2024-06-21T10:00:00.000Z",
+    ); // Friday
   }
 });
 
@@ -178,7 +196,10 @@ Deno.test("weekday list: single weekday (monday from monday)", () => {
   const result = computeNextRun(anchor, "mon");
   assertEquals(result.ok, true);
   if (result.ok) {
-    assertEquals(new Date(result.next.epochMilliseconds).toISOString(), "2024-06-24T10:00:00.000Z"); // Next Monday
+    assertEquals(
+      new Date(result.next.epochMilliseconds).toISOString(),
+      "2024-06-24T10:00:00.000Z",
+    ); // Next Monday
   }
 });
 
@@ -187,7 +208,10 @@ Deno.test("weekday list: mixed casing and whitespace", () => {
   const result = computeNextRun(anchor, "  tue ,  Fri  ");
   assertEquals(result.ok, true);
   if (result.ok) {
-    assertEquals(new Date(result.next.epochMilliseconds).toISOString(), "2024-06-18T10:00:00.000Z"); // Tuesday
+    assertEquals(
+      new Date(result.next.epochMilliseconds).toISOString(),
+      "2024-06-18T10:00:00.000Z",
+    ); // Tuesday
   }
 });
 
@@ -209,7 +233,10 @@ Deno.test("weekday list: weekday/workday aliases", () => {
   const resultFri = computeNextRun(anchorFri, "weekday");
   assertEquals(resultFri.ok, true);
   if (resultFri.ok) {
-    assertEquals(new Date(resultFri.next.epochMilliseconds).toISOString(), "2024-06-24T10:00:00.000Z"); // Next Monday
+    assertEquals(
+      new Date(resultFri.next.epochMilliseconds).toISOString(),
+      "2024-06-24T10:00:00.000Z",
+    ); // Next Monday
   }
 
   // Saturday
@@ -217,7 +244,10 @@ Deno.test("weekday list: weekday/workday aliases", () => {
   const resultSat = computeNextRun(anchorSat, "weekdays");
   assertEquals(resultSat.ok, true);
   if (resultSat.ok) {
-    assertEquals(new Date(resultSat.next.epochMilliseconds).toISOString(), "2024-06-24T10:00:00.000Z"); // Next Monday
+    assertEquals(
+      new Date(resultSat.next.epochMilliseconds).toISOString(),
+      "2024-06-24T10:00:00.000Z",
+    ); // Next Monday
   }
 
   // Monday
@@ -225,7 +255,10 @@ Deno.test("weekday list: weekday/workday aliases", () => {
   const resultMon = computeNextRun(anchorMon, "workday");
   assertEquals(resultMon.ok, true);
   if (resultMon.ok) {
-    assertEquals(new Date(resultMon.next.epochMilliseconds).toISOString(), "2024-06-18T10:00:00.000Z"); // Tuesday
+    assertEquals(
+      new Date(resultMon.next.epochMilliseconds).toISOString(),
+      "2024-06-18T10:00:00.000Z",
+    ); // Tuesday
   }
 });
 
