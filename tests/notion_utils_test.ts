@@ -240,3 +240,47 @@ Deno.test("validateNotionEnvVars: falls back to environment variables", () => {
     else Deno.env.delete("NOTION_DATABASE_ID");
   }
 });
+
+Deno.test("validateNotionEnvVars: config database_id takes priority over NOTION_DATABASE_ID env", () => {
+  const originalDbId = Deno.env.get("NOTION_DATABASE_ID");
+
+  try {
+    // Simulate a production DB ID being set in env
+    Deno.env.set("NOTION_DATABASE_ID", "prod-db-id");
+
+    // Config explicitly sets the test database ID — it should take priority
+    const mockConfig = {
+      notion_api_key: "test-api-key",
+      notion_database_id: "test-db-id",
+    };
+
+    // deno-lint-ignore no-explicit-any
+    const creds = validateNotionEnvVars(mockConfig as any);
+    assertEquals(creds.databaseId, "test-db-id");
+  } finally {
+    if (originalDbId) Deno.env.set("NOTION_DATABASE_ID", originalDbId);
+    else Deno.env.delete("NOTION_DATABASE_ID");
+  }
+});
+
+Deno.test("validateNotionEnvVars: falls back to NOTION_TEST_DATABASE_ID when NOTION_DATABASE_ID is unset", () => {
+  const originalDbId = Deno.env.get("NOTION_DATABASE_ID");
+  const originalTestDbId = Deno.env.get("NOTION_TEST_DATABASE_ID");
+
+  try {
+    // Ensure NOTION_DATABASE_ID is NOT set
+    Deno.env.delete("NOTION_DATABASE_ID");
+    Deno.env.set("NOTION_API_KEY", "env-api-key");
+    Deno.env.set("NOTION_TEST_DATABASE_ID", "test-db-fallback");
+
+    const creds = validateNotionEnvVars();
+    assertEquals(creds.databaseId, "test-db-fallback");
+  } finally {
+    if (originalDbId) Deno.env.set("NOTION_DATABASE_ID", originalDbId);
+    else Deno.env.delete("NOTION_DATABASE_ID");
+
+    if (originalTestDbId) {
+      Deno.env.set("NOTION_TEST_DATABASE_ID", originalTestDbId);
+    } else Deno.env.delete("NOTION_TEST_DATABASE_ID");
+  }
+});

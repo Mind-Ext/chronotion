@@ -23,14 +23,18 @@ import "@std/dotenv/load";
 
 // ─── Test Config ────────────────────────────────────────────────────
 
+const testDbId = Deno.env.get("NOTION_TEST_DATABASE_ID");
+
 const testConfig: AppConfig = {
   ...DEFAULT_CONFIG,
   local_mode: false,
+  // Explicitly set the test database ID so getDatabaseId(testConfig) never falls through
+  // to NOTION_DATABASE_ID (the production database).
+  notion_database_id: testDbId || "",
 };
 
 // Check if integration tests should be skipped
-const hasNotionEnv = !!(Deno.env.get("NOTION_API_KEY") &&
-  (Deno.env.get("NOTION_DB_ID") || Deno.env.get("NOTION_TEST_DATABASE_ID")));
+const hasNotionEnv = !!(Deno.env.get("NOTION_API_KEY") && testDbId);
 
 // ─── Integration Tests (require real Notion API) ────────────────────
 
@@ -53,7 +57,7 @@ Deno.test({
   name: "initDatabaseSchema: provisions required properties",
   ignore: !hasNotionEnv,
   async fn() {
-    const dbId = getDatabaseId();
+    const dbId = getDatabaseId(testConfig);
     resetClient();
 
     await initDatabaseSchema(testConfig, dbId);
@@ -93,7 +97,7 @@ Deno.test({
   name: "pull/push lifecycle: create, fetch, update, verify",
   ignore: !hasNotionEnv,
   async fn() {
-    const dbId = getDatabaseId();
+    const dbId = getDatabaseId(testConfig);
     resetClient();
 
     // Clean up any previous test data
@@ -164,7 +168,7 @@ Deno.test({
   name: "fetchJobs: excludes program-set statuses from results",
   ignore: !hasNotionEnv,
   async fn() {
-    const dbId = getDatabaseId();
+    const dbId = getDatabaseId(testConfig);
     resetClient();
     await cleanupTestPages(dbId);
 
@@ -231,7 +235,7 @@ Deno.test({
   name: "createNextNotionInstance: creates linked next job in Notion",
   ignore: !hasNotionEnv,
   async fn() {
-    const dbId = getDatabaseId();
+    const dbId = getDatabaseId(testConfig);
     resetClient();
 
     // Clean up
@@ -319,7 +323,7 @@ Deno.test({
   name: "date parsing: ISO-8601 dates from Notion are handled correctly",
   ignore: !hasNotionEnv,
   async fn() {
-    const dbId = getDatabaseId();
+    const dbId = getDatabaseId(testConfig);
     resetClient();
     await cleanupTestPages(dbId);
 
