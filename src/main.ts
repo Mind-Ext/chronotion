@@ -132,98 +132,83 @@ async function validateNewJobs(
     new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
 
-  const processQueue = async () => {
-    let queue: QueueData | null = null;
-    let queueModified = false;
-    const seenUids = new Set<string>();
+  const seenUids = new Set<string>();
 
-    for (const rJob of remoteJobs) {
-      // Resolve duplicate UIDs
-      if (seenUids.has(rJob.uid)) {
-        rJob.uid = crypto.randomUUID();
-        if (rJob.status !== null) {
-          try {
-            await updateNotionJob(rJob, config);
-            logger.info(`[${rJob.uid}] ${rJob.script}: Resolved duplicate UID`);
-          } catch (err) {
-            logger.error(
-              `[${rJob.uid}] ${rJob.script}: Failed to update UID - ${
-                err instanceof Error ? err.message : String(err)
-              }`,
-            );
-          }
-        }
-      }
-      seenUids.add(rJob.uid);
-
-      if (rJob.status === null) {
-        let errorMsg = null;
-        if (!rJob.script || rJob.script.trim() === "") {
-          errorMsg = "Validation failed: Missing script name.";
-        } else if (!rJob.scheduled_at || rJob.scheduled_at.trim() === "") {
-          errorMsg = "Validation failed: Missing scheduled_at (start time).";
-        } else if (/^\d{4}-\d{2}-\d{2}$/.test(rJob.scheduled_at.trim())) {
-          errorMsg =
-            "Validation failed: scheduled_at must include a time component (e.g. YYYY-MM-DDTHH:MM).";
-        } else {
-          const validationError = validateNextIn(rJob.next_in);
-          if (validationError) {
-            errorMsg =
-              `Validation failed: Invalid schedule - ${validationError}`;
-          }
-        }
-
-        const scriptName = rJob.script || "unknown";
-
-        if (errorMsg) {
-          rJob.status = "error";
-          rJob.output = errorMsg;
-          logger.error(`[${rJob.uid}] ${scriptName}: ${errorMsg}`);
-        } else {
-          rJob.status = "pending";
-          rJob.output = "Job validated and registered successfully.";
-          logger.info(
-            `[${rJob.uid}] ${scriptName}: Validated new job`,
-          );
-        }
-
+  for (const rJob of remoteJobs) {
+    // Resolve duplicate UIDs
+    if (seenUids.has(rJob.uid)) {
+      rJob.uid = crypto.randomUUID();
+      if (rJob.status !== null) {
         try {
           await updateNotionJob(rJob, config);
+          logger.info(`[${rJob.uid}] ${rJob.script}: Resolved duplicate UID`);
         } catch (err) {
           logger.error(
-            `[${rJob.uid}] ${scriptName}: Notion validation push failed - ${
+            `[${rJob.uid}] ${rJob.script}: Failed to update UID - ${
               err instanceof Error ? err.message : String(err)
             }`,
           );
         }
-      } else if (rJob.status === "skipped") {
-        // If user manually marked a job as skipped in Notion,
-        // we should instantly compute its next run and push it to Notion.
-        if (!queue) queue = await loadQueue();
-
-        // Ensure this skipped job isn't already processed (has a next_instance)
-        const localJob = queue.jobs.find(
-          (j) => (j.notion_page_id === rJob.uid || j.uid === rJob.uid),
-        );
-
-        // We only reschedule if it hasn't spawned a next_instance yet
-        if (localJob && !localJob.next_instance) {
-          logger.info(
-            `[${localJob.uid}] ${localJob.script}: User marked as skipped, rescheduling next instance`,
-          );
-          await scheduleNext(localJob, queue, config);
-          queueModified = true;
-        }
       }
     }
+    seenUids.add(rJob.uid);
 
-    if (queueModified && queue) {
-      await saveQueue(queue);
+    if (rJob.status === null) {
+      let errorMsg = null;
+      if (!rJob.script || rJob.script.trim() === "") {
+        errorMsg = "Validation failed: Missing script name.";
+      } else if (!rJob.scheduled_at || rJob.scheduled_at.trim() === "") {
+        errorMsg = "Validation failed: Missing scheduled_at (start time).";
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(rJob.scheduled_at.trim())) {
+        errorMsg =
+          "Validation failed: scheduled_at must include a time component (e.g. YYYY-MM-DDTHH:MM).";
+      } else {
+        const validationError = validateNextIn(rJob.next_in);
+        if (validationError) {
+          errorMsg =
+            `Validation failed: Invalid schedule - ${validationError}`;
+        }
+      }
+
+      const scriptName = rJob.script || "unknown";
+
+      if (errorMsg) {
+        rJob.status = "error";
+        rJob.output = errorMsg;
+        logger.error(`[${rJob.uid}] ${scriptName}: ${errorMsg}`);
+      } else {
+        rJob.status = "pending";
+        rJob.output = "Job validated and registered successfully.";
+        logger.info(
+          `[${rJob.uid}] ${scriptName}: Validated new job`,
+        );
+      }
+
+      try {
+        await updateNotionJob(rJob, config);
+      } catch (err) {
+        logger.error(
+          `[${rJob.uid}] ${scriptName}: Notion validation push failed - ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
     }
-  };
+  }
+}
 
-  if (!config.local_mode) {
-    await withQueueLock(processQueue);
+/** After remote sync and merge, reschedule skipped jobs that don't have a next instance yet. */
+async function processSkippedJobs(
+  queue: QueueData,
+  config: AppConfig,
+): Promise<void> {
+  for (const job of queue.jobs) {
+    if (job.status === "skipped" && !job.next_instance) {
+      logger.info(
+        `[${job.uid}] ${job.script}: User marked as skipped, rescheduling next instance`,
+      );
+      await scheduleNext(job, queue, config);
+    }
   }
 }
 
@@ -492,17 +477,16 @@ export async function runCycle(
 
       let staleJobs: JobInstance[] = [];
 
-      const syncRemoteJobsToLocalQueue = async () => {
+      await withQueueLock(async () => {
         const localQueue = await loadQueue();
         const { queue: merged, staleRemote } = mergeWithNotion(
           localQueue,
           remoteJobs,
         );
+        await processSkippedJobs(merged, config);
         await saveQueue(merged);
         staleJobs = staleRemote;
-      };
-
-      await withQueueLock(syncRemoteJobsToLocalQueue);
+      });
 
       logger.info(
         `Pulled ${remoteJobs.length} job(s) from Notion`,
