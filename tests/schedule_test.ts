@@ -140,6 +140,53 @@ Deno.test("macro: last workday of month", () => {
   }
 });
 
+Deno.test("macro: range (15th to 18th day of month)", () => {
+  const anchor = new Date("2024-06-01T10:00:00Z");
+  const result = computeNextRun(anchor, "15th to 18th day of month");
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.next.month, 6);
+    assertEquals(result.next.day, 15);
+  }
+});
+
+Deno.test("macro: range (15-18 day of month) combined with boolean", () => {
+  // 15th to 18th of June 2024: 15(Sat), 16(Sun), 17(Mon), 18(Tue)
+  // Workdays in that range: 17th and 18th.
+  // We want next occurrence after June 1. It should be Monday June 17.
+  const anchor = new Date("2024-06-01T10:00:00Z");
+  const result = computeNextRun(anchor, "workday AND 15-18 day of month");
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.next.month, 6);
+    assertEquals(result.next.day, 17);
+  }
+});
+
+Deno.test("macro: range with ordinal targets (1-3 sat of month)", () => {
+  // June 1 2024 is the 1st Saturday.
+  // Next match should be the 2nd Saturday (June 8).
+  const anchor = new Date("2024-06-01T10:00:00Z");
+  const result = computeNextRun(anchor, "1-3 sat of month");
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.next.month, 6);
+    assertEquals(result.next.day, 8); // June 8th
+  }
+});
+
+Deno.test("macro: range with workday target (15-18 workday of month)", () => {
+  // June 2024 workdays: 3-7 (1-5), 10-14 (6-10), 17-21 (11-15).
+  // The 15th workday is June 21.
+  const anchor = new Date("2024-06-01T10:00:00Z");
+  const result = computeNextRun(anchor, "15-18 workday of month");
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.next.month, 6);
+    assertEquals(result.next.day, 21); // June 21st
+  }
+});
+
 // --- Special cases ---
 
 Deno.test("never returns error", () => {
@@ -171,6 +218,10 @@ Deno.test("validateNextIn: valid expressions", () => {
   assertEquals(validateNextIn("last day of january"), [true, ""]);
   assertEquals(validateNextIn("last workday of month"), [true, ""]);
   assertEquals(validateNextIn("1st wed of month"), [true, ""]);
+  assertEquals(validateNextIn("15th to 18th day of month"), [true, ""]);
+  assertEquals(validateNextIn("15-18 day of month"), [true, ""]);
+  assertEquals(validateNextIn("1-3 sat of month"), [true, ""]);
+  assertEquals(validateNextIn("15-18 workday of month"), [true, ""]);
 });
 
 Deno.test("validateNextIn: invalid expressions", () => {

@@ -237,6 +237,32 @@ function parsePrimitive(str: string): ASTNode | null {
   const s = str.trim().toLowerCase();
   if (!s) return null;
 
+  const rangeMatch = s.match(
+    /^(\d+)(?:st|nd|rd|th)?\s*(?:to|-)\s*(\d+)(?:st|nd|rd|th)?\s+(\w+)\s+of\s+(\w+)$/,
+  );
+  if (rangeMatch) {
+    const start = parseInt(rangeMatch[1], 10);
+    const end = parseInt(rangeMatch[2], 10);
+    const target = rangeMatch[3];
+    const period = rangeMatch[4];
+
+    if (start < end && end <= 31) {
+      let node: ASTNode | null = null;
+      for (let i = start; i <= end; i++) {
+        const spec = parseMacroSpec(`${i} ${target} of ${period}`);
+        if (!spec) return null;
+
+        const macroNode: ASTNode = { type: "MACRO", spec };
+        if (!node) {
+          node = macroNode;
+        } else {
+          node = { type: "OR", left: node, right: macroNode };
+        }
+      }
+      return node;
+    }
+  }
+
   const macroSpec = parseMacroSpec(s);
   if (macroSpec) {
     return { type: "MACRO", spec: macroSpec };
