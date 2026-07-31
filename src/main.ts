@@ -165,8 +165,7 @@ async function validateNewJobs(
       } else {
         const validationError = validateNextIn(rJob.next_in);
         if (validationError) {
-          errorMsg =
-            `Validation failed: Invalid schedule - ${validationError}`;
+          errorMsg = `Validation failed: Invalid schedule - ${validationError}`;
         }
       }
 

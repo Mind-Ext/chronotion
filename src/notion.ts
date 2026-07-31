@@ -104,6 +104,28 @@ export async function initDatabaseSchema(
     existingProps.add("scheduled_at");
   }
 
+  // Remove existing properties that have a mismatched type (e.g. relation -> rich_text migration)
+  // deno-lint-ignore no-explicit-any
+  const toDelete: Record<string, any> = {};
+  for (const [name, schema] of Object.entries(REQUIRED_PROPERTIES)) {
+    if ("title" in schema) continue;
+    const existing = db.properties[name];
+    if (existing) {
+      const expectedType = Object.keys(schema)[0];
+      if (existing.type !== expectedType) {
+        toDelete[name] = null;
+        existingProps.delete(name);
+      }
+    }
+  }
+
+  if (Object.keys(toDelete).length > 0) {
+    await notion.databases.update({
+      database_id: dbId,
+      properties: toDelete,
+    });
+  }
+
   // Build update payload for missing properties and sync select options
   // deno-lint-ignore no-explicit-any
   const toAdd: Record<string, any> = {};
@@ -168,8 +190,8 @@ function pageToJob(page: PageObjectResponse, config?: AppConfig): JobInstance {
   const statusRaw = getSelectValue(props.status);
   const uid = getPlainText(props.uid);
   const workerId = getSelectValue(props.worker_id);
-  const prevInstance = getRelationId(props.prev_instance);
-  const nextInstance = getRelationId(props.next_instance);
+  const prevInstance = getPlainText(props.prev_instance) || null;
+  const nextInstance = getPlainText(props.next_instance) || null;
   const timeoutMinutes = getNumberValue(props.timeout_minutes);
 
   const status = JOB_STATUSES.find((s) => s === statusRaw) ?? null;
@@ -274,6 +296,8 @@ export async function updateNotionJob(
     status: { select: job.status ? { name: job.status } : null },
     worker_id: { select: job.worker_id ? { name: job.worker_id } : null },
     uid: { rich_text: richText(job.uid) },
+    prev_instance: { rich_text: richText(job.prev_instance ?? "") },
+    next_instance: { rich_text: richText(job.next_instance ?? "") },
   };
 
   if (job.finished_at) {
@@ -345,6 +369,7 @@ export async function createNextNotionInstance(
     status: { select: { name: "pending" } },
     worker_id: { select: job.worker_id ? { name: job.worker_id } : null },
     uid: { rich_text: richText(nextUid) },
+    prev_instance: { rich_text: richText(job.uid) },
   };
 
   if (job.end_on) {
@@ -353,13 +378,6 @@ export async function createNextNotionInstance(
 
   if (job.timeout_minutes !== null) {
     properties.timeout_minutes = { number: job.timeout_minutes };
-  }
-
-  // Link to previous instance
-  if (job.notion_page_id) {
-    properties.prev_instance = {
-      relation: [{ id: job.notion_page_id }],
-    };
   }
 
   const createPayload: CreatePageParameters = {
@@ -380,7 +398,7 @@ export async function createNextNotionInstance(
     const forwardUpdatePayload: UpdatePageParameters = {
       page_id: job.notion_page_id,
       properties: {
-        next_instance: { relation: [{ id: newPageId }] },
+        next_instance: { rich_text: richText(nextUid) },
       },
     };
     await notion.pages.update(forwardUpdatePayload);

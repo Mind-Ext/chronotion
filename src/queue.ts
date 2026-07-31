@@ -196,8 +196,13 @@ export function mergeWithNotion(
         }
       } else {
         // Local is pending/error/disabled/skipped — remote is authoritative
-        // Preserve local uid for stability
-        const mergedJob = { ...remoteJob, uid: localJob.uid };
+        // Preserve local uid for stability, and fallback to local chain links if remote lacks them
+        const mergedJob = {
+          ...remoteJob,
+          uid: localJob.uid,
+          prev_instance: remoteJob.prev_instance || localJob.prev_instance,
+          next_instance: remoteJob.next_instance || localJob.next_instance,
+        };
         mergedJobs.push(mergedJob);
 
         // If status changed, we need to sync the icon in Notion

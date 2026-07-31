@@ -220,6 +220,58 @@ Deno.test("mergeWithNotion: success/failed local jobs are protected", () => {
   assertEquals(job?.output, "completed!"); // Output preserved
 });
 
+Deno.test("mergeWithNotion: pending local job adopts text UID chain links from remote or local", () => {
+  const local: QueueData = {
+    jobs: [
+      makeTestJob({
+        uid: "child-uid",
+        status: "pending",
+        notion_page_id: "child-page-id",
+        prev_instance: "parent-uid",
+        next_instance: null,
+      }),
+    ],
+    last_updated: "",
+  };
+
+  const remote = [
+    makeTestJob({
+      uid: "child-uid",
+      status: "pending",
+      notion_page_id: "child-page-id",
+      prev_instance: "parent-uid",
+      next_instance: null,
+    }),
+  ];
+
+  const { queue: result } = mergeWithNotion(local, remote);
+  const child = result.jobs.find((j) => j.uid === "child-uid")!;
+  assertEquals(child.prev_instance, "parent-uid");
+  assertEquals(child.next_instance, null);
+});
+
+Deno.test("mergeWithNotion: new remote job with text UID chain links is preserved", () => {
+  const local: QueueData = {
+    jobs: [],
+    last_updated: "",
+  };
+
+  const remote = [
+    makeTestJob({
+      uid: "new-remote-uid",
+      status: "pending",
+      notion_page_id: "new-page-id",
+      prev_instance: "parent-uid",
+      next_instance: null,
+    }),
+  ];
+
+  const { queue: result } = mergeWithNotion(local, remote);
+  const newJob = result.jobs.find((j) => j.uid === "new-remote-uid")!;
+  assertEquals(newJob.prev_instance, "parent-uid");
+  assertEquals(newJob.next_instance, null);
+});
+
 Deno.test("loadQueue: initializes empty queue.json if not found", async () => {
   const queuePath = path.join(PROJECT_ROOT, "local", "queue.json");
 

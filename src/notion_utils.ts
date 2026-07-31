@@ -274,7 +274,7 @@ export const REQUIRED_PROPERTIES: Record<string, object> = {
   },
   worker_id: { select: {} },
   uid: { rich_text: {} },
-  prev_instance: { relation: { database_id: "SELF", single_property: {} } },
-  next_instance: { relation: { database_id: "SELF", single_property: {} } },
+  prev_instance: { rich_text: {} },
+  next_instance: { rich_text: {} },
   timeout_minutes: { number: { format: "number" } },
 };
