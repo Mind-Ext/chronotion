@@ -44,6 +44,9 @@ export const DEFAULT_CONFIG: AppConfig = {
   // Notion fetch limit: max age in days since last edited time (0 = no limit)
   fetch_max_age_days: 90,
 
+  // Maximum days to search ahead when resolving next scheduled date
+  max_schedule_search_days: 1096,
+
   // Emoji prefixes used in Notion title
   emojis: {
     pending: "",
@@ -164,6 +167,12 @@ export async function loadConfig(
 
   // Ensure fetch_max_age_days is at least 0
   merged.fetch_max_age_days = Math.max(0, merged.fetch_max_age_days || 0);
+
+  // Ensure max_schedule_search_days is at least 1
+  merged.max_schedule_search_days = Math.max(
+    1,
+    merged.max_schedule_search_days || 1096,
+  );
 
   // Resolve scripts_dir to absolute path
   if (!path.isAbsolute(merged.scripts_dir)) {

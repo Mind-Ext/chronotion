@@ -163,8 +163,8 @@ async function validateNewJobs(
         errorMsg =
           "Validation failed: scheduled_at must include a time component (e.g. YYYY-MM-DDTHH:MM).";
       } else {
-        const validationError = validateNextIn(rJob.next_in);
-        if (validationError) {
+        const [valid, validationError] = validateNextIn(rJob.next_in);
+        if (!valid) {
           errorMsg = `Validation failed: Invalid schedule - ${validationError}`;
         }
       }
@@ -220,8 +220,8 @@ async function executeJob(
 
   try {
     // Validate next_in expression
-    const validationError = validateNextIn(job.next_in);
-    if (validationError) {
+    const [valid, validationError] = validateNextIn(job.next_in);
+    if (!valid) {
       const markJobAsScheduleError = async () => {
         const queue = await loadQueue();
         updateJob(queue, job.uid, {
@@ -336,7 +336,11 @@ async function scheduleNext(
   config: AppConfig,
 ): Promise<void> {
   let anchor = job.scheduled_at;
-  let result = computeNextRun(anchor, job.next_in);
+  let result = computeNextRun(
+    anchor,
+    job.next_in,
+    config.max_schedule_search_days,
+  );
 
   if (!result.ok) {
     if (result.error !== "never") {
@@ -358,7 +362,11 @@ async function scheduleNext(
     iterations < maxIterations
   ) {
     anchor = result.next.toString();
-    result = computeNextRun(anchor, job.next_in);
+    result = computeNextRun(
+      anchor,
+      job.next_in,
+      config.max_schedule_search_days,
+    );
     iterations++;
   }
 

@@ -85,6 +85,8 @@ export interface AppConfig {
   history_max_entries: number;
   // Notion fetch limit: max age in days of last edited time (0 = no limit)
   fetch_max_age_days: number;
+  // Maximum days to search ahead when resolving next scheduled date (default 1096)
+  max_schedule_search_days: number;
   // Emoji prefixes for status in Notion
   emojis: Record<Exclude<JobStatus, null>, string>;
   // Status display text in Notion

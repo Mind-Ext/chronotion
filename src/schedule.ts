@@ -4,6 +4,8 @@
  * Supported formats:
  *   Intervals: "N d/day/days", "N w/week/weeks", "N m/month/months", "N y/yr/year/years"
  *   Macros: "first/second/3rd/../last day/monday/.. of month/january/.."
+ *   Weekdays: "mon,wed,fri", "workdays"
+ *   Boolean expressions: "workday & (1st day of month, 15th day of month)", "mon AND last day of month"
  *   Special: "never" (one-off, no rescheduling)
  */
 
@@ -58,9 +60,25 @@ const ORDINAL_MAP: Record<string, number> = {
   last: -1,
 };
 
-type ScheduleResult =
+export type ScheduleResult =
   | { ok: true; next: Temporal.ZonedDateTime }
   | { ok: false; error: string };
+
+export type ASTNode =
+  | { type: "OR"; left: ASTNode; right: ASTNode }
+  | { type: "AND"; left: ASTNode; right: ASTNode }
+  | { type: "WEEKDAY"; dayIndices: number[] }
+  | { type: "MACRO"; spec: MacroSpec };
+
+interface Token {
+  kind: "LPAREN" | "RPAREN" | "AND" | "OR" | "PRIM";
+  value?: string;
+}
+
+interface Parser {
+  tokens: Token[];
+  pos: number;
+}
 
 function toZonedDateTime(anchor: Date | string): Temporal.ZonedDateTime {
   if (typeof anchor === "string") {
@@ -70,9 +88,6 @@ function toZonedDateTime(anchor: Date | string): Temporal.ZonedDateTime {
     }
     const tzMatch = str.match(/\[([^\]]+)\]$/);
     const offsetMatch = str.match(/([+-]\d{2}:\d{2})$/);
-    // Note: offset-only strings (no IANA zone) use a fixed offset, so DST
-    // transitions won't be handled — this is acceptable since the source
-    // already lacked timezone identity.
     const tz = tzMatch ? tzMatch[1] : (offsetMatch ? offsetMatch[1] : "UTC");
     const cleanStr = stripTzBracket(str);
     const instant = Temporal.Instant.from(cleanStr);
@@ -87,6 +102,7 @@ function toZonedDateTime(anchor: Date | string): Temporal.ZonedDateTime {
 export function computeNextRun(
   anchor: Date | string,
   nextIn: string,
+  maxSearchDays = 1096,
 ): ScheduleResult {
   const expr = nextIn.trim().toLowerCase();
 
@@ -101,24 +117,19 @@ export function computeNextRun(
   const intervalResult = parseInterval(expr, zdt);
   if (intervalResult) return intervalResult;
 
-  // Try macro format: "ordinal weekday/day of period"
-  const macroResult = parseMacro(expr, zdt);
-  if (macroResult) return macroResult;
-
-  // Try weekday list format: "mon,wed,fri"
-  const weekdayList = parseWeekdayList(expr);
-  if (weekdayList && weekdayList.length > 0) {
-    const next = computeNextWeekday(zdt, weekdayList);
-    return { ok: true, next };
+  // Try declarative AST format (macros, weekdays, AND, OR, parentheses)
+  const ast = parseDeclarativeAST(expr);
+  if (ast) {
+    return computeNextDeclarative(zdt, ast, maxSearchDays);
   }
 
   return { ok: false, error: `Invalid next_in expression: "${nextIn}"` };
 }
 
 /** Validate a next_in expression without computing a date */
-export function validateNextIn(nextIn: string): string | null {
+export function validateNextIn(nextIn: string): [boolean, string] {
   const expr = nextIn.trim().toLowerCase();
-  if (expr === "never" || expr === "") return null;
+  if (expr === "never" || expr === "") return [true, ""];
 
   // Check interval
   const intervalMatch = expr.match(
@@ -126,51 +137,27 @@ export function validateNextIn(nextIn: string): string | null {
   );
   if (intervalMatch) {
     if (parseInt(intervalMatch[1], 10) === 0) {
-      return `Interval count must be greater than zero: "${nextIn}"`;
+      return [false, `Interval count must be greater than zero: "${nextIn}"`];
     }
-    return null;
+    return [true, ""];
   }
 
-  // Check macro
-  const macroMatch = expr.match(
-    /^(first|second|third|fourth|fifth|last|\d+(?:st|nd|rd|th))\s+(\w+)\s+of\s+(\w+)$/,
-  );
-  if (macroMatch) {
-    const [, ordStr, targetStr, periodStr] = macroMatch;
-    if (!(ordStr in ORDINAL_MAP) && !ordStr.match(/^\d+/)) {
-      return `Invalid ordinal: "${ordStr}"`;
-    }
-    if (
-      targetStr !== "day" &&
-      !DAY_NAMES.includes(targetStr as typeof DAY_NAMES[number])
-    ) {
-      return `Invalid day name: "${targetStr}"`;
-    }
-    if (
-      periodStr !== "month" &&
-      !MONTH_NAMES.includes(periodStr as typeof MONTH_NAMES[number])
-    ) {
-      return `Invalid period: "${periodStr}"`;
-    }
-    return null;
+  // Check declarative AST
+  if (parseDeclarativeAST(expr) !== null) {
+    return [true, ""];
   }
 
-  // Check weekday list
-  if (parseWeekdayList(expr) !== null) {
-    return null;
-  }
-
-  return `Invalid next_in expression: "${nextIn}"`;
+  return [false, `Invalid next_in expression: "${nextIn}"`];
 }
 
-/** Check if a date matches a macro expression (for first-instance validation) */
+/** Check if a date matches a macro or declarative expression */
 export function dateMatchesMacro(date: Date, nextIn: string): boolean {
-  const result = parseMacroSpec(nextIn.trim().toLowerCase());
-  if (!result) return true; // Not a macro, no validation needed
+  const expr = nextIn.trim().toLowerCase();
+  const ast = parseDeclarativeAST(expr);
+  if (!ast) return true; // Not a declarative macro/expression, no validation needed
 
-  const { ordinal, target, period } = result;
   const zdt = toZonedDateTime(date);
-  return dateMatchesSpec(zdt, ordinal, target, period);
+  return dateMatchesNode(zdt, ast);
 }
 
 function parseInterval(
@@ -215,7 +202,7 @@ interface MacroSpec {
 
 function parseMacroSpec(expr: string): MacroSpec | null {
   const match = expr.match(
-    /^(first|second|third|fourth|fifth|last|\d+(?:st|nd|rd|th))\s+(\w+)\s+of\s+(\w+)$/,
+    /^(first|second|third|fourth|fifth|last|\d+(?:st|nd|rd|th)?)\s+(\w+)\s+of\s+(\w+)$/,
   );
   if (!match) return null;
 
@@ -225,12 +212,14 @@ function parseMacroSpec(expr: string): MacroSpec | null {
   if (ordStr in ORDINAL_MAP) {
     ordinal = ORDINAL_MAP[ordStr];
   } else {
-    ordinal = parseInt(ordStr);
+    ordinal = parseInt(ordStr, 10);
   }
 
   if (
     target !== "day" &&
-    !DAY_NAMES.includes(target as typeof DAY_NAMES[number])
+    target !== "workday" &&
+    !DAY_NAMES.includes(target as typeof DAY_NAMES[number]) &&
+    !SHORT_DAY_NAMES.includes(target as typeof SHORT_DAY_NAMES[number])
   ) {
     return null;
   }
@@ -244,70 +233,163 @@ function parseMacroSpec(expr: string): MacroSpec | null {
   return { ordinal, target, period };
 }
 
-function parseMacro(
-  expr: string,
-  anchor: Temporal.ZonedDateTime,
-): ScheduleResult | null {
-  const spec = parseMacroSpec(expr);
-  if (!spec) return null;
+function parsePrimitive(str: string): ASTNode | null {
+  const s = str.trim().toLowerCase();
+  if (!s) return null;
 
-  const { ordinal, target, period } = spec;
-
-  // Determine the next occurrence AFTER the anchor
-  let searchZdt = anchor;
-
-  for (let i = 0; i < 24; i++) {
-    // Search up to 2 years ahead
-    if (period === "month") {
-      // Move to next month
-      if (i > 0) {
-        searchZdt = searchZdt.add({ months: 1 });
-      }
-    } else {
-      // Specific month — find the next occurrence of that month
-      const targetMonth = MONTH_NAMES.indexOf(
-        period as typeof MONTH_NAMES[number],
-      ) + 1; // 1-indexed in Temporal
-      if (i === 0) {
-        // Start from current year's target month, or next year if passed
-        searchZdt = Temporal.ZonedDateTime.from({
-          year: anchor.year,
-          month: targetMonth,
-          day: 1,
-          hour: anchor.hour,
-          minute: anchor.minute,
-          second: anchor.second,
-          millisecond: anchor.millisecond,
-          microsecond: anchor.microsecond,
-          nanosecond: anchor.nanosecond,
-          timeZone: anchor.timeZoneId,
-        });
-        if (
-          Temporal.Instant.compare(searchZdt.toInstant(), anchor.toInstant()) <=
-            0
-        ) {
-          searchZdt = searchZdt.add({ years: 1 });
-        }
-      } else {
-        searchZdt = searchZdt.add({ years: 1 });
-      }
-    }
-
-    const resultZdt = findOrdinalInMonth(
-      searchZdt,
-      ordinal,
-      target,
-    );
-
-    if (
-      resultZdt &&
-      Temporal.Instant.compare(resultZdt.toInstant(), anchor.toInstant()) > 0
-    ) {
-      return { ok: true, next: resultZdt };
-    }
+  const macroSpec = parseMacroSpec(s);
+  if (macroSpec) {
+    return { type: "MACRO", spec: macroSpec };
   }
 
-  return { ok: false, error: `Could not find next occurrence for "${expr}"` };
+  const dayIndices = weekdayToIndices(s);
+  if (dayIndices && dayIndices.length > 0) {
+    return { type: "WEEKDAY", dayIndices };
+  }
+
+  return null;
+}
+
+function tokenize(expr: string): Token[] | null {
+  let clean = expr.trim();
+  clean = clean.replace(/&&|&/g, " AND ");
+  clean = clean.replace(/,/g, " OR ");
+  clean = clean.replace(/\(/g, " ( ").replace(/\)/g, " ) ");
+
+  const words = clean.split(/\s+/).filter((w) => w.length > 0);
+  if (words.length === 0) return null;
+
+  const tokens: Token[] = [];
+  let currentPrimWords: string[] = [];
+
+  const flushPrim = () => {
+    if (currentPrimWords.length > 0) {
+      tokens.push({ kind: "PRIM", value: currentPrimWords.join(" ") });
+      currentPrimWords = [];
+    }
+  };
+
+  for (const word of words) {
+    const lower = word.toLowerCase();
+    if (lower === "and") {
+      if (currentPrimWords.length === 0 && tokens.length === 0) return null;
+      flushPrim();
+      tokens.push({ kind: "AND" });
+    } else if (lower === "or") {
+      if (currentPrimWords.length === 0 && tokens.length === 0) return null;
+      flushPrim();
+      tokens.push({ kind: "OR" });
+    } else if (word === "(") {
+      flushPrim();
+      tokens.push({ kind: "LPAREN" });
+    } else if (word === ")") {
+      flushPrim();
+      tokens.push({ kind: "RPAREN" });
+    } else {
+      currentPrimWords.push(word);
+    }
+  }
+  flushPrim();
+
+  return tokens;
+}
+
+function parseExpr(p: Parser): ASTNode | null {
+  let left = parseAndExpr(p);
+  if (!left) return null;
+
+  while (p.pos < p.tokens.length && p.tokens[p.pos].kind === "OR") {
+    p.pos++; // consume OR
+    const right = parseAndExpr(p);
+    if (!right) return null;
+    left = { type: "OR", left, right };
+  }
+
+  return left;
+}
+
+function parseAndExpr(p: Parser): ASTNode | null {
+  let left = parseFactor(p);
+  if (!left) return null;
+
+  while (p.pos < p.tokens.length && p.tokens[p.pos].kind === "AND") {
+    p.pos++; // consume AND
+    const right = parseFactor(p);
+    if (!right) return null;
+    left = { type: "AND", left, right };
+  }
+
+  return left;
+}
+
+function parseFactor(p: Parser): ASTNode | null {
+  if (p.pos >= p.tokens.length) return null;
+
+  const token = p.tokens[p.pos];
+  if (token.kind === "LPAREN") {
+    p.pos++; // consume (
+    const expr = parseExpr(p);
+    if (!expr) return null;
+    if (p.pos >= p.tokens.length || p.tokens[p.pos].kind !== "RPAREN") {
+      return null;
+    }
+    p.pos++; // consume )
+    return expr;
+  }
+
+  if (token.kind === "PRIM" && token.value) {
+    p.pos++;
+    return parsePrimitive(token.value);
+  }
+
+  return null;
+}
+
+export function parseDeclarativeAST(expr: string): ASTNode | null {
+  const tokens = tokenize(expr);
+  if (!tokens || tokens.length === 0) return null;
+  const p: Parser = { tokens, pos: 0 };
+  const ast = parseExpr(p);
+  if (!ast) return null;
+  if (p.pos < p.tokens.length) return null; // Trailing unparsed tokens
+  return ast;
+}
+
+function dateMatchesNode(zdt: Temporal.ZonedDateTime, node: ASTNode): boolean {
+  switch (node.type) {
+    case "OR":
+      return dateMatchesNode(zdt, node.left) ||
+        dateMatchesNode(zdt, node.right);
+    case "AND":
+      return dateMatchesNode(zdt, node.left) &&
+        dateMatchesNode(zdt, node.right);
+    case "WEEKDAY": {
+      const currentDay = zdt.dayOfWeek % 7;
+      return node.dayIndices.includes(currentDay);
+    }
+    case "MACRO":
+      return dateMatchesSpec(
+        zdt,
+        node.spec.ordinal,
+        node.spec.target,
+        node.spec.period,
+      );
+  }
+}
+
+function computeNextDeclarative(
+  anchor: Temporal.ZonedDateTime,
+  ast: ASTNode,
+  maxSearchDays = 1096,
+): ScheduleResult {
+  let searchZdt = anchor.add({ days: 1 });
+  for (let i = 0; i < maxSearchDays; i++) {
+    if (dateMatchesNode(searchZdt, ast)) {
+      return { ok: true, next: searchZdt };
+    }
+    searchZdt = searchZdt.add({ days: 1 });
+  }
+  return { ok: false, error: `Could not find next occurrence for AST` };
 }
 
 function findOrdinalInMonth(
@@ -316,22 +398,46 @@ function findOrdinalInMonth(
   target: string,
 ): Temporal.ZonedDateTime | null {
   if (target === "day") {
-    // Nth day of the month
     const daysInMonth = searchZdt.daysInMonth;
     if (ordinal === -1) {
-      // Last day
       return searchZdt.with({ day: daysInMonth });
     }
     if (ordinal > daysInMonth) return null;
     return searchZdt.with({ day: ordinal });
   }
 
-  // Nth weekday of the month
-  const targetDay = DAY_NAMES.indexOf(target as typeof DAY_NAMES[number]);
+  if (target === "workday") {
+    const daysInMonth = searchZdt.daysInMonth;
+    if (ordinal === -1) {
+      for (let d = daysInMonth; d >= 1; d--) {
+        const zdt = searchZdt.with({ day: d });
+        const dow = zdt.dayOfWeek % 7;
+        if (dow >= 1 && dow <= 5) return zdt;
+      }
+      return null;
+    }
+
+    let count = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const zdt = searchZdt.with({ day: d });
+      const dow = zdt.dayOfWeek % 7;
+      if (dow >= 1 && dow <= 5) {
+        count++;
+        if (count === ordinal) return zdt;
+      }
+    }
+    return null;
+  }
+
+  let targetDay = DAY_NAMES.indexOf(target as typeof DAY_NAMES[number]);
+  if (targetDay === -1) {
+    targetDay = SHORT_DAY_NAMES.indexOf(
+      target as typeof SHORT_DAY_NAMES[number],
+    );
+  }
   if (targetDay === -1) return null;
 
   if (ordinal === -1) {
-    // Last occurrence: start from end of month, walk backward
     const daysInMonth = searchZdt.daysInMonth;
     for (let d = daysInMonth; d >= 1; d--) {
       const zdt = searchZdt.with({ day: d });
@@ -340,7 +446,6 @@ function findOrdinalInMonth(
     return null;
   }
 
-  // Find the Nth occurrence
   let count = 0;
   const daysInMonth = searchZdt.daysInMonth;
   for (let d = 1; d <= daysInMonth; d++) {
@@ -359,71 +464,35 @@ function dateMatchesSpec(
   target: string,
   period: string,
 ): boolean {
-  // Check period (month match)
   if (period !== "month") {
     const targetMonth = MONTH_NAMES.indexOf(
       period as typeof MONTH_NAMES[number],
-    ) + 1; // 1-indexed in Temporal
+    ) + 1;
     if (zdt.month !== targetMonth) return false;
   }
 
-  // Check target (day/weekday match)
-  const expected = findOrdinalInMonth(
-    zdt,
-    ordinal,
-    target,
-  );
+  const expected = findOrdinalInMonth(zdt, ordinal, target);
   if (!expected) return false;
 
-  return (
-    zdt.day === expected.day &&
-    zdt.month === expected.month
-  );
+  return zdt.day === expected.day && zdt.month === expected.month;
 }
 
-function parseWeekdayList(expr: string): number[] | null {
+function weekdayToIndices(expr: string): number[] | null {
   if (/^(?:week|work)days?$/.test(expr)) {
     return [1, 2, 3, 4, 5];
   }
 
-  if (!/^[a-z]+(?:\s*,\s*[a-z]+)*$/.test(expr)) {
-    return null;
+  const longIndex = DAY_NAMES.indexOf(expr as typeof DAY_NAMES[number]);
+  if (longIndex !== -1) {
+    return [longIndex];
   }
 
-  const parts = expr.split(",").map((s) => s.trim());
-  const dayIndices: number[] = [];
-
-  for (const part of parts) {
-    const longIndex = DAY_NAMES.indexOf(part as typeof DAY_NAMES[number]);
-    if (longIndex !== -1) {
-      dayIndices.push(longIndex);
-      continue;
-    }
-    const shortIndex = SHORT_DAY_NAMES.indexOf(
-      part as typeof SHORT_DAY_NAMES[number],
-    );
-    if (shortIndex !== -1) {
-      dayIndices.push(shortIndex);
-      continue;
-    }
-    return null; // Invalid day name
+  const shortIndex = SHORT_DAY_NAMES.indexOf(
+    expr as typeof SHORT_DAY_NAMES[number],
+  );
+  if (shortIndex !== -1) {
+    return [shortIndex];
   }
 
-  return Array.from(new Set(dayIndices)).sort((a, b) => a - b);
-}
-
-function computeNextWeekday(
-  zdt: Temporal.ZonedDateTime,
-  dayIndices: number[],
-): Temporal.ZonedDateTime {
-  const currentDay = zdt.dayOfWeek % 7; // Map 1-7 to 0-6
-  let daysToAdd = 1;
-  for (; daysToAdd <= 7; daysToAdd++) {
-    const target = (currentDay + daysToAdd) % 7;
-    if (dayIndices.includes(target)) {
-      break;
-    }
-  }
-
-  return zdt.add({ days: daysToAdd });
+  return null;
 }

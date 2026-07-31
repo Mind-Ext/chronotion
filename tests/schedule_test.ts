@@ -110,6 +110,36 @@ Deno.test("macro: 3rd friday of month", () => {
   }
 });
 
+Deno.test("macro: 1st wed of month (short day name)", () => {
+  const anchor = new Date("2024-06-01T10:00:00Z");
+  const result = computeNextRun(anchor, "1st wed of month");
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.next.month, 6);
+    assertEquals(result.next.day, 5);
+  }
+});
+
+Deno.test("macro: first workday of month", () => {
+  const anchor = new Date("2024-06-01T10:00:00Z");
+  const result = computeNextRun(anchor, "first workday of month");
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.next.month, 6);
+    assertEquals(result.next.day, 3);
+  }
+});
+
+Deno.test("macro: last workday of month", () => {
+  const anchor = new Date("2024-06-01T10:00:00Z");
+  const result = computeNextRun(anchor, "last workday of month");
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.next.month, 6);
+    assertEquals(result.next.day, 28);
+  }
+});
+
 // --- Special cases ---
 
 Deno.test("never returns error", () => {
@@ -133,19 +163,21 @@ Deno.test("invalid expression returns error", () => {
 // --- Validation ---
 
 Deno.test("validateNextIn: valid expressions", () => {
-  assertEquals(validateNextIn("1d"), null);
-  assertEquals(validateNextIn("3 weeks"), null);
-  assertEquals(validateNextIn("never"), null);
-  assertEquals(validateNextIn(""), null);
-  assertEquals(validateNextIn("first monday of month"), null);
-  assertEquals(validateNextIn("last day of january"), null);
+  assertEquals(validateNextIn("1d"), [true, ""]);
+  assertEquals(validateNextIn("3 weeks"), [true, ""]);
+  assertEquals(validateNextIn("never"), [true, ""]);
+  assertEquals(validateNextIn(""), [true, ""]);
+  assertEquals(validateNextIn("first monday of month"), [true, ""]);
+  assertEquals(validateNextIn("last day of january"), [true, ""]);
+  assertEquals(validateNextIn("last workday of month"), [true, ""]);
+  assertEquals(validateNextIn("1st wed of month"), [true, ""]);
 });
 
 Deno.test("validateNextIn: invalid expressions", () => {
-  assertEquals(typeof validateNextIn("every day"), "string");
-  assertEquals(typeof validateNextIn("abc"), "string");
-  assertEquals(typeof validateNextIn("0d"), "string");
-  assertEquals(typeof validateNextIn("0 months"), "string");
+  assertEquals(validateNextIn("every day")[0], false);
+  assertEquals(validateNextIn("abc")[0], false);
+  assertEquals(validateNextIn("0d")[0], false);
+  assertEquals(validateNextIn("0 months")[0], false);
 });
 
 // --- Macro matching ---
@@ -216,15 +248,15 @@ Deno.test("weekday list: mixed casing and whitespace", () => {
 });
 
 Deno.test("validateNextIn: valid weekday lists", () => {
-  assertEquals(validateNextIn("mon,wed,fri"), null);
-  assertEquals(validateNextIn("monday, wednesday"), null);
-  assertEquals(validateNextIn("tue"), null);
-  assertEquals(validateNextIn("  sunday  "), null);
+  assertEquals(validateNextIn("mon,wed,fri"), [true, ""]);
+  assertEquals(validateNextIn("monday, wednesday"), [true, ""]);
+  assertEquals(validateNextIn("tue"), [true, ""]);
+  assertEquals(validateNextIn("  sunday  "), [true, ""]);
 });
 
 Deno.test("validateNextIn: invalid weekday lists", () => {
-  assertEquals(typeof validateNextIn("mon,invalid"), "string");
-  assertEquals(typeof validateNextIn("mon, wed, 123"), "string");
+  assertEquals(validateNextIn("mon,invalid")[0], false);
+  assertEquals(validateNextIn("mon, wed, 123")[0], false);
 });
 
 Deno.test("weekday list: weekday/workday aliases", () => {
@@ -263,10 +295,10 @@ Deno.test("weekday list: weekday/workday aliases", () => {
 });
 
 Deno.test("validateNextIn: valid weekday aliases", () => {
-  assertEquals(validateNextIn("weekday"), null);
-  assertEquals(validateNextIn("weekdays"), null);
-  assertEquals(validateNextIn("workday"), null);
-  assertEquals(validateNextIn("workdays"), null);
+  assertEquals(validateNextIn("weekday"), [true, ""]);
+  assertEquals(validateNextIn("weekdays"), [true, ""]);
+  assertEquals(validateNextIn("workday"), [true, ""]);
+  assertEquals(validateNextIn("workdays"), [true, ""]);
 });
 
 // --- Timezone-aware scheduling tests ---
@@ -337,4 +369,114 @@ Deno.test("timezone string anchor: macro preserves timezone", () => {
     assertEquals(result.next.hour, 8);
     assertEquals(result.next.toString().includes("[Europe/London]"), true);
   }
+});
+
+// --- Declarative Boolean Expression tests (AND, OR, &, &&, commas, parentheses) ---
+
+Deno.test("boolean logic: AND expression (monday AND 1st day of month)", () => {
+  // June 1 2024 is Saturday. July 1 2024 is Monday!
+  const anchor = new Date("2024-06-01T10:00:00Z");
+  const result = computeNextRun(anchor, "monday AND 1st day of month");
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.next.month, 7); // July
+    assertEquals(result.next.day, 1);
+    assertEquals(result.next.dayOfWeek, 1); // Monday
+  }
+});
+
+Deno.test("boolean logic: ampersand & and parentheses (workdays & (1st day of month, 15th day of month))", () => {
+  // June 1 2024 is Saturday. June 15 2024 is Saturday.
+  // Next 1st or 15th of month that falls on a workday:
+  // July 1 2024 (Monday) is 1st of month and a workday!
+  const anchor = new Date("2024-06-01T10:00:00Z");
+  const result = computeNextRun(
+    anchor,
+    "workdays & (1st day of month, 15th day of month)",
+  );
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.next.month, 7); // July
+    assertEquals(result.next.day, 1);
+  }
+});
+
+Deno.test("boolean logic: double ampersand && (friday && last day of month)", () => {
+  // May 31 2024 is a Friday and the last day of May!
+  const anchor = new Date("2024-05-01T10:00:00Z");
+  const result = computeNextRun(anchor, "friday && last day of month");
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.next.month, 5); // May
+    assertEquals(result.next.day, 31);
+    assertEquals(result.next.dayOfWeek, 5); // Friday
+  }
+});
+
+Deno.test("boolean logic: comma as OR with macro (1st day of month, 15th day of month)", () => {
+  // From June 2 2024, next is June 15
+  const anchor = new Date("2024-06-02T10:00:00Z");
+  const result = computeNextRun(anchor, "1st day of month, 15th day of month");
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.next.month, 6);
+    assertEquals(result.next.day, 15);
+  }
+});
+
+Deno.test("boolean logic: nested parentheses", () => {
+  // July 1 2024 is Monday. July 2 2024 is Tuesday.
+  // Both match the respective sides of the OR.
+  // With anchor May 31 2024, the earliest is July 1.
+  const anchor = new Date("2024-05-31T10:00:00Z");
+  const result = computeNextRun(
+    anchor,
+    "((mon OR wed) AND 1st day of month) OR (tue AND 2nd day of month)",
+  );
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.next.month, 7);
+    assertEquals(result.next.day, 1);
+  }
+  
+  // With anchor July 1 2024 at noon, the next match is July 2.
+  const anchor2 = new Date("2024-07-01T12:00:00Z");
+  const result2 = computeNextRun(
+    anchor2,
+    "((mon OR wed) AND 1st day of month) OR (tue AND 2nd day of month)",
+  );
+  assertEquals(result2.ok, true);
+  if (result2.ok) {
+    assertEquals(result2.next.month, 7);
+    assertEquals(result2.next.day, 2);
+  }
+});
+
+Deno.test("validateNextIn: valid boolean expressions", () => {
+  assertEquals(
+    validateNextIn("workdays & (1st day of month, 15th day of month)"),
+    [true, ""],
+  );
+  assertEquals(validateNextIn("mon AND last day of month"), [true, ""]);
+  assertEquals(validateNextIn("tue && 3rd friday of month"), [true, ""]);
+  assertEquals(validateNextIn("(mon OR wed) AND 1st day of month"), [true, ""]);
+  assertEquals(validateNextIn("((mon OR wed) AND 1st day of month) OR (tue AND 2nd day of month)"), [true, ""]);
+});
+
+Deno.test("validateNextIn: invalid boolean expressions", () => {
+  // Cannot mix interval with boolean logic
+  assertEquals(validateNextIn("1d OR mon")[0], false);
+  assertEquals(validateNextIn("2w AND 1st day of month")[0], false);
+  // Unmatched parens
+  assertEquals(validateNextIn("(mon OR wed")[0], false);
+  // Missing operands
+  assertEquals(validateNextIn("mon AND")[0], false);
+  assertEquals(validateNextIn("& wed")[0], false);
+});
+
+Deno.test("computeNextRun: maxSearchDays limit", () => {
+  const anchor = new Date("2024-06-01T10:00:00Z");
+  // If maxSearchDays is set to 3 days, "first day of january" cannot be reached
+  const result = computeNextRun(anchor, "first day of january", 3);
+  assertEquals(result.ok, false);
 });
