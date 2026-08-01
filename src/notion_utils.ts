@@ -102,6 +102,7 @@ export function getPlainText(
  * from a date string. Returns the string unchanged if no bracket is present.
  */
 export function stripTzBracket(str: string): string {
+  if (!str || typeof str !== "string") return "";
   return str.replace(/\[[^\]]+\]$/, "");
 }
 
@@ -181,6 +182,7 @@ export function getDateString(
  * but don't need timezone identity.
  */
 export function parseDate(str: string): Date {
+  if (!str || typeof str !== "string") return new Date(0);
   return new Date(stripTzBracket(str));
 }
 

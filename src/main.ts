@@ -90,6 +90,11 @@ async function finalizeOrphanedRunningJobs(config: AppConfig): Promise<void> {
     const queue = await loadQueue();
     orphanedJobs = markOrphanedRunningJobsAsError(queue);
     if (orphanedJobs.length > 0) {
+      for (const job of orphanedJobs) {
+        if (job.next_in && !job.next_instance) {
+          await scheduleNext(job, queue, config);
+        }
+      }
       await saveQueue(queue);
     }
   };
@@ -330,7 +335,7 @@ async function executeJob(
 }
 
 /** Schedule the next instance of a job based on next_in */
-async function scheduleNext(
+export async function scheduleNext(
   job: JobInstance,
   queue: QueueData,
   config: AppConfig,
@@ -432,6 +437,7 @@ async function scheduleNext(
       );
       // Link the ID immediately if successful
       nextJob.notion_page_id = notionPageId;
+      updateJob(queue, nextJob.uid, { notion_page_id: notionPageId });
     } catch (err) {
       logger.error(
         `[${job.uid}] ${job.script}: Notion reschedule failed - ${
@@ -470,7 +476,9 @@ export async function runCycle(
     });
   } catch (err) {
     logger.error(
-      `Cleanup failed - ${err instanceof Error ? err.message : String(err)}`,
+      `Cleanup failed - ${
+        err instanceof Error ? (err.stack || err.message) : String(err)
+      }`,
     );
   }
 

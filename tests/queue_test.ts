@@ -1,6 +1,7 @@
 import { assertEquals, assertNotEquals, assertRejects } from "@std/assert";
 import {
   addJob,
+  cleanupQueue,
   createJob,
   findJob,
   generateUid,
@@ -270,6 +271,30 @@ Deno.test("mergeWithNotion: new remote job with text UID chain links is preserve
   const newJob = result.jobs.find((j) => j.uid === "new-remote-uid")!;
   assertEquals(newJob.prev_instance, "parent-uid");
   assertEquals(newJob.next_instance, null);
+});
+
+Deno.test("cleanupQueue: handles jobs with missing or undefined scheduled_at without throwing", () => {
+  const queue: QueueData = {
+    jobs: [
+      makeTestJob({
+        uid: "legacy-job-1",
+        status: "success",
+        // deno-lint-ignore no-explicit-any
+        scheduled_at: undefined as any,
+        created_at: "2025-01-01T00:00:00Z",
+      }),
+      makeTestJob({
+        uid: "legacy-job-2",
+        status: "failed",
+        scheduled_at: "",
+        created_at: "2025-01-02T00:00:00Z",
+      }),
+    ],
+    last_updated: "",
+  };
+
+  cleanupQueue(queue, 0, 1);
+  assertEquals(queue.jobs.length, 1);
 });
 
 Deno.test("loadQueue: initializes empty queue.json if not found", async () => {

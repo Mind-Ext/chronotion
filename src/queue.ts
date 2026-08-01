@@ -250,9 +250,10 @@ export function cleanupQueue(
 
   if (terminalJobs.length === 0) return;
 
-  // Sort oldest first based on scheduled_at
+  // Sort oldest first based on scheduled_at (fallback to created_at)
   terminalJobs.sort((a, b) =>
-    parseDate(a.scheduled_at).getTime() - parseDate(b.scheduled_at).getTime()
+    parseDate(a.scheduled_at || a.created_at || "").getTime() -
+    parseDate(b.scheduled_at || b.created_at || "").getTime()
   );
 
   const toDelete = new Set<string>();
@@ -262,7 +263,7 @@ export function cleanupQueue(
   if (maxAgeDays > 0) {
     const cutoff = now - maxAgeDays * 24 * 60 * 60 * 1000;
     for (const job of terminalJobs) {
-      if (parseDate(job.scheduled_at).getTime() < cutoff) {
+      if (parseDate(job.scheduled_at || job.created_at || "").getTime() < cutoff) {
         toDelete.add(job.uid);
       }
     }
