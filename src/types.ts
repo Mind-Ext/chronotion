@@ -77,6 +77,8 @@ export interface AppConfig {
   poll_minutes: number;
   // Base directory for scripts (resolved to absolute)
   scripts_dir: string;
+  // Fallback execution timeout in minutes for jobs without their own timeout_minutes (null = unlimited)
+  timeout_minutes: number | null;
   // Maximum time in minutes a job can be overdue before it is marked as missed (0 = infinite lookback)
   lookback_minutes: number;
   // Log and Queue cleanup: max age in days (0 = no limit)

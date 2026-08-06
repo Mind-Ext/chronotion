@@ -34,6 +34,9 @@ export const DEFAULT_CONFIG: AppConfig = {
   // Base directory for executable scripts (relative to project root)
   scripts_dir: "scripts",
 
+  // Fallback execution timeout in minutes for jobs without their own timeout_minutes (null = unlimited)
+  timeout_minutes: 60,
+
   // Maximum time in minutes a job can be overdue before it is marked as missed (0 = infinite lookback)
   lookback_minutes: 0,
 

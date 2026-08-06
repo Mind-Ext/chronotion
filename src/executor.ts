@@ -208,11 +208,12 @@ export async function executeScript(
   // Build command
   const cmdArray = buildCommand(job, pathResult.resolved, baseCmd);
 
-  // Set up abort controller for timeout
-  const ac = job.timeout_minutes ? new AbortController() : null;
+  // Set up abort controller for timeout (per-job timeout, falling back to global default)
+  const timeoutMinutes = job.timeout_minutes ?? config.timeout_minutes;
+  const ac = timeoutMinutes ? new AbortController() : null;
 
-  const timeoutId = ac && job.timeout_minutes
-    ? setTimeout(() => ac.abort(), job.timeout_minutes * 60 * 1000)
+  const timeoutId = ac && timeoutMinutes
+    ? setTimeout(() => ac.abort(), timeoutMinutes * 60 * 1000)
     : null;
 
   try {
@@ -253,7 +254,7 @@ export async function executeScript(
     if (err instanceof DOMException && err.name === "AbortError") {
       return {
         success: false,
-        output: `Script timed out after ${job.timeout_minutes} minutes`,
+        output: `Script timed out after ${timeoutMinutes} minutes`,
         exitCode: -1,
       };
     }

@@ -65,6 +65,7 @@ Customize the orchestrator's behavior by creating `local/config.jsonc`. See [src
 - **local_mode**: if `true`, it bypasses Notion and uses `local/queue.json` (default: `false`).
 - **poll_minutes**: how often to fetch and check for due jobs (default: `15`).
 - **scripts_dir**: directory under project root for storing scripts (default: `scripts`).
+- **timeout_minutes**: fallback execution timeout in minutes for jobs that don't set their own `timeout_minutes` (`null` for unlimited, default: `60`). A job's own `timeout_minutes` always takes precedence.
 - **lookback_minutes**: max age of missed jobs to still execute (default: `0` for infinite).
 - **runtimes**: command mappings for file extensions (default: `deno run` for `js`/`ts`, `uv run` for `py`, `bash` for `sh`).
 - **env**: environment variables to forward to scripts.
