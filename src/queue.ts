@@ -263,7 +263,9 @@ export function cleanupQueue(
   if (maxAgeDays > 0) {
     const cutoff = now - maxAgeDays * 24 * 60 * 60 * 1000;
     for (const job of terminalJobs) {
-      if (parseDate(job.scheduled_at || job.created_at || "").getTime() < cutoff) {
+      if (
+        parseDate(job.scheduled_at || job.created_at || "").getTime() < cutoff
+      ) {
         toDelete.add(job.uid);
       }
     }

@@ -21,7 +21,6 @@ import {
   getDateString,
   getNumberValue,
   getPlainText,
-  getRelationId,
   getSelectValue,
   parseNotionDateString,
   parseStringArgs,

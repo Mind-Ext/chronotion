@@ -489,7 +489,7 @@ Deno.test("boolean logic: nested parentheses", () => {
     assertEquals(result.next.month, 7);
     assertEquals(result.next.day, 1);
   }
-  
+
   // With anchor July 1 2024 at noon, the next match is July 2.
   const anchor2 = new Date("2024-07-01T12:00:00Z");
   const result2 = computeNextRun(
@@ -511,7 +511,12 @@ Deno.test("validateNextIn: valid boolean expressions", () => {
   assertEquals(validateNextIn("mon AND last day of month"), [true, ""]);
   assertEquals(validateNextIn("tue && 3rd friday of month"), [true, ""]);
   assertEquals(validateNextIn("(mon OR wed) AND 1st day of month"), [true, ""]);
-  assertEquals(validateNextIn("((mon OR wed) AND 1st day of month) OR (tue AND 2nd day of month)"), [true, ""]);
+  assertEquals(
+    validateNextIn(
+      "((mon OR wed) AND 1st day of month) OR (tue AND 2nd day of month)",
+    ),
+    [true, ""],
+  );
 });
 
 Deno.test("validateNextIn: invalid boolean expressions", () => {
