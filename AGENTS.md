@@ -1,0 +1,1 @@
+Before making any commit, run `deno fmt`, `deno lint`, and `deno task test`. If involving integration with real Notion database then also run `deno task test:notion`.

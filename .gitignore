@@ -3,3 +3,4 @@ local/*
 scripts/*
 *.md
 !README.md
+!AGENTS.md
