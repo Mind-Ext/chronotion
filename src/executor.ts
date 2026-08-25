@@ -126,6 +126,22 @@ export function buildSubprocessEnv(
   return { ...inheritedEnv, ...configEnv };
 }
 
+/** Build the job-specific environment variables injected for subprocess execution */
+export function buildJobEnv(
+  job: JobInstance,
+  config: AppConfig,
+): Record<string, string> {
+  return {
+    NO_COLOR: "1", // Disable ANSI escape codes in subprocess output
+    CHRONOTION_JOB_UID: job.uid,
+    CHRONOTION_JOB_NAME: job.name ?? "",
+    CHRONOTION_SCHEDULED_AT: job.scheduled_at,
+    CHRONOTION_WORKER_ID: config.worker_id,
+    ...(config.env.default ?? {}),
+    ...(config.env[job.script] ?? {}),
+  };
+}
+
 /** Build the command array for a job */
 export function buildCommand(
   job: JobInstance,
@@ -217,11 +233,7 @@ export async function executeScript(
     : null;
 
   try {
-    const scriptEnv = {
-      NO_COLOR: "1", // Disable ANSI escape codes in subprocess output
-      ...(config.env.default || {}),
-      ...(config.env[job.script] || {}),
-    };
+    const scriptEnv = buildJobEnv(job, config);
 
     // Use custom CWD from config if specified, otherwise default to the script's directory
     const scriptCwd = config.cwd[job.script] ||

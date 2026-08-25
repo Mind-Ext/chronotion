@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import {
   buildCommand,
+  buildJobEnv,
   buildSubprocessEnv,
   detectRuntimeCommand,
   parseShebangRuntime,
@@ -131,6 +132,51 @@ Deno.test("buildSubprocessEnv: excludes unrelated parent env", () => {
   );
 
   assertEquals(result, { PATH: "/usr/bin" });
+});
+
+Deno.test("buildJobEnv: injects standard chronotion environment variables", () => {
+  const job = makeJob({
+    uid: "job-abc-123",
+    name: "Nightly Sync",
+    scheduled_at: "2026-08-24T12:00:00Z",
+    script: "sync.ts",
+  });
+
+  const config = {
+    ...DEFAULT_CONFIG,
+    worker_id: "worker-node-1",
+    env: {
+      default: { SHARED_VAR: "common" },
+      "sync.ts": { SCRIPT_VAR: "custom" },
+    },
+  };
+
+  const env = buildJobEnv(job, config);
+
+  assertEquals(env, {
+    NO_COLOR: "1",
+    CHRONOTION_JOB_UID: "job-abc-123",
+    CHRONOTION_JOB_NAME: "Nightly Sync",
+    CHRONOTION_SCHEDULED_AT: "2026-08-24T12:00:00Z",
+    CHRONOTION_WORKER_ID: "worker-node-1",
+    SHARED_VAR: "common",
+    SCRIPT_VAR: "custom",
+  });
+});
+
+Deno.test("buildJobEnv: falls back to empty string for name when undefined", () => {
+  const job = makeJob({
+    uid: "job-simple",
+    scheduled_at: "2026-08-24T12:00:00Z",
+    script: "simple.sh",
+  });
+
+  const env = buildJobEnv(job, DEFAULT_CONFIG);
+
+  assertEquals(env.CHRONOTION_JOB_UID, "job-simple");
+  assertEquals(env.CHRONOTION_JOB_NAME, "");
+  assertEquals(env.CHRONOTION_SCHEDULED_AT, "2026-08-24T12:00:00Z");
+  assertEquals(env.CHRONOTION_WORKER_ID, DEFAULT_CONFIG.worker_id);
 });
 
 // --- Command building ---
