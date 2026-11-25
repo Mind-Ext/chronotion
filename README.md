@@ -82,6 +82,18 @@ Customize the orchestrator's behavior by creating `local/config.jsonc`. See [src
 - **disabled**: 💤 Manually set. Disables the current job and prevents the next instance being scheduled.
 - **skipped**: ⏩ Manually set. Skips the current instance but schedules the next instance as normal.
 
+### Read-Only External Entries (Inbox)
+
+Log finished jobs from external sources (e.g. `systemd`, `cron`, `watchtower`) into Notion without Chronotion executing or tracking them in `local/queue.json`:
+
+```bash
+deno task ingest '{"name":"backup","worker_id":"oracle-systemd","status":"success","output":"Done"}'
+# or via stdin
+echo '{"name":"backup","worker_id":"oracle-systemd","status":"failed","output":"exit 1"}' | deno task ingest
+```
+
+`deno task ingest` validates the JSON (accepting a single object or an array) and pushes directly to Notion immediately without touching `app.lock` or `local/queue.json`. Pass `--queue` (or drop `.json` files directly into `local/inbox/`) to let the daemon push them on its next poll cycle instead (invalid inbox files are moved to `local/inbox/failed/`; transient API errors stay in `local/inbox/` for retry). Only terminal statuses (`success`, `failed`, `error`, `missed`) are accepted, so ingested entries are never pulled back into `local/queue.json`.
+
 ### Tips for Notion
 
 - Create database views to see jobs on the calendar and apply custom filters.

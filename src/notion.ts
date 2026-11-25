@@ -17,6 +17,7 @@ import type {
 } from "@notionhq/client/build/src/api-endpoints.d.ts";
 import type { AppConfig, JobInstance, JobStatus } from "./types.ts";
 import { JOB_STATUSES, NO_FETCH_STATUSES } from "./types.ts";
+import type { InboxEntry } from "./inbox.ts";
 import {
   getDateString,
   getNumberValue,
@@ -404,4 +405,56 @@ export async function createNextNotionInstance(
   }
 
   return newPageId;
+}
+
+/**
+ * Create a read-only Notion page for an external finished job from the inbox.
+ * Returns the created page ID.
+ */
+export async function createNotionInboxEntry(
+  entry: InboxEntry,
+  config: AppConfig,
+  databaseId?: string,
+): Promise<string> {
+  const notion = getClient(config);
+  const dbId = databaseId ?? getDatabaseId(config);
+
+  // deno-lint-ignore no-explicit-any
+  const properties: Record<string, any> = {
+    name: { title: richText(entry.name) },
+    script: { rich_text: richText(entry.script) },
+    args: { rich_text: richText(entry.args.join(" ")) },
+    scheduled_at: { date: parseNotionDateString(entry.scheduled_at) },
+    status: { select: { name: entry.status } },
+    worker_id: { select: { name: entry.worker_id } },
+    uid: { rich_text: richText(entry.uid) },
+  };
+
+  if (entry.finished_at) {
+    properties.finished_at = { date: parseNotionDateString(entry.finished_at) };
+  }
+
+  const createPayload: CreatePageParameters = {
+    parent: { database_id: dbId },
+    properties,
+    ...(config.emojis[entry.status] && {
+      // deno-lint-ignore no-explicit-any
+      icon: { type: "emoji", emoji: config.emojis[entry.status] as any },
+    }),
+    ...(entry.output && {
+      children: [
+        {
+          object: "block",
+          type: "code",
+          code: {
+            rich_text: richText(truncateOutput(entry.output)),
+            language: "plain text",
+          },
+        },
+      ],
+    }),
+  };
+
+  const response = await notion.pages.create(createPayload);
+  return response.id;
 }

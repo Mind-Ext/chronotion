@@ -1,6 +1,7 @@
 {
   "tasks": {
     "start": "deno run -A src/main.ts",
+    "ingest": "deno run -A src/ingest.ts",
     "test": "deno test -A --ignore=tests/notion_test.ts tests/",
     "test:notion": "deno test -A tests/notion_test.ts",
     "test:all": "deno test -A tests/",

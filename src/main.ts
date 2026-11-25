@@ -39,6 +39,7 @@ import {
   validateNotionEnvVars,
 } from "./notion_utils.ts";
 import { acquireProcessLock } from "./lock.ts";
+import { drainInbox } from "./inbox.ts";
 import "@std/dotenv/load";
 
 /** In-memory task registry to track running promises and prevent double-starting */
@@ -522,6 +523,17 @@ export async function runCycle(
     } catch (err) {
       logger.error(
         `Notion pull failed - ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+
+    // ── Drain read-only inbox to Notion (error-isolated) ──
+    try {
+      await drainInbox(config);
+    } catch (err) {
+      logger.error(
+        `Inbox drain failed - ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
